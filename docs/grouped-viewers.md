@@ -146,13 +146,15 @@ location. API errors/unknown state also retain them.
 Failed sessions are marked `[failed]` in the sidebar and retained rather than
 automatically removed, so an error is not disguised as successful completion.
 
-Herdr's snapshot exposes one current focus, not all attached clients' viewports.
-Consequently the optional closer subscribes to supported pane-focus events and
-**permanently pins a viewer once selected**. It does not close that viewer later
-just because another client or tab is focused. Existing viewers are pinned on
-initialization/reload, and observation failure disables automatic closing.
-Use manual close or ownership-only cleanup for pinned views. Retention is the
-safe default.
+Herdr exposes the current focus for attached clients, not a durable history of
+which viewers were once inspected. The optional closer subscribes to supported
+pane-focus events and protects the currently focused viewer. Returning to the
+parent releases that automatic inspection protection, so an explicit
+close-completed action can close the child later. Explicit `ocap_pin=1`
+metadata is a separate pin and remains protected; the current plugin does not
+add a public pin/unpin command. If focus observation fails, automatic closing
+is disabled. Use manual close or ownership-only cleanup for pinned views.
+Retention is the safe default.
 
 Checks are repeated immediately before a close, but Herdr has no atomic
 “close only if still uninspected and native-idle” transaction shared with

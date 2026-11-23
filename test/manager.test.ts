@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import { execFileSync } from "node:child_process"
-import { Manager, enabled, newState, owns, type Pane, type Session } from "../src/manager.ts"
+import { Manager, closeSummaryMessage, enabled, newState, owns, type Pane, type Session } from "../src/manager.ts"
 import { quote } from "../src/herdr.ts"
 
 function harness(max = 4) {
@@ -216,9 +216,53 @@ test("cleanup closes only this context's owned panes, preserves seen claims", as
   await h.manager.consider("a")
   await h.manager.cleanup()
   assert.deepEqual(h.panes().map((p) => p.pane_id), ["user", "other"])
-  assert.match(h.reports.at(-1)!, /keep running/)
+  assert.match(h.reports.at(-1)!, /Viewer tabs closed\. Conversations preserved; any active work continues\./)
   await h.manager.consider("a")
   assert.equal(h.launches.length, 1)
+})
+
+test("close completed is scoped, preserves active work, inspection and pinned viewers", async () => {
+  const h = harness()
+  const ownDone: Pane = { pane_id: "own-done", agent_status: "done",
+    tokens: { ocap_owner: h.io.prefix, ocap_session: "a", ocap_status: "done" } }
+  const ownRunning: Pane = { pane_id: "own-running", agent_status: "working",
+    tokens: { ocap_owner: h.io.prefix, ocap_session: "b", ocap_status: "working" } }
+  const ownInspected: Pane = { pane_id: "own-inspected", focused: true, agent_status: "done",
+    tokens: { ocap_owner: h.io.prefix, ocap_session: "nested", ocap_status: "done" } }
+  const foreign: Pane = { pane_id: "foreign-done", agent_status: "done",
+    tokens: { ocap_owner: "ocap:other:", ocap_session: "a", ocap_status: "done" } }
+  h.panes().push(ownDone, ownRunning, ownInspected, foreign)
+  const pinned = new Set(["own-inspected"])
+  const manager = new Manager(h.state, {
+    ...h.io,
+    safeToClose: async (id) => id === "a" || id === "nested",
+    canClosePane: (pane) => pinned.has(pane.pane_id) ? "explicitly pinned" : true,
+  })
+  const summary = await manager.closeCompleted()
+  assert.deepEqual(h.panes().map((pane) => pane.pane_id),
+    ["own-running", "own-inspected", "foreign-done"])
+  assert.deepEqual(summary, {
+    closed: 1,
+    skipped: {
+      "native work still running or blocked": 1,
+      "currently inspected": 1,
+    },
+    failed: 0,
+  })
+  assert.match(closeSummaryMessage(summary),
+    /Closed 1 completed viewer tab; skipped 2 \(native work still running or blocked: 1, currently inspected: 1\); closure failures: 0\./)
+})
+
+test("close completed fails closed when completion cannot be verified", async () => {
+  const h = harness()
+  h.panes().push({ pane_id: "uncertain", agent_status: "done",
+    tokens: { ocap_owner: h.io.prefix, ocap_session: "a", ocap_status: "done" } })
+  const manager = new Manager(h.state, {
+    ...h.io,
+    safeToClose: async () => { throw new Error("server unavailable") },
+  })
+  await manager.closeCompleted()
+  assert.equal(h.panes().length, 1)
 })
 
 test("viewer marker prevents recursion; missing Herdr context stays inert", () => {

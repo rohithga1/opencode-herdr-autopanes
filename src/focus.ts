@@ -1,11 +1,14 @@
 import { createConnection } from "node:net"
 
-// Herdr's snapshot has one global focus, not every attached client's viewport.
-// Any focus event pins that pane for its lifetime. Fail closed if events are
-// unavailable; do not guess that a viewer is uninspected after reconnect/reload.
+export type CloseBlockReason = "currently inspected" | "explicitly pinned" | "inspection unavailable"
+
+// Herdr exposes the current focused pane, not a durable "was ever inspected"
+// flag. Automatic inspection protection follows focus changes; it must not turn
+// a completed viewer into a permanent manual-close exclusion.
 export class FocusGuard {
   private ready = false
-  private pinned = new Set<string>()
+  private focused?: string
+  private explicitPins = new Set<string>()
   private socket
   constructor(path: string, report: (message: string) => void) {
     this.socket = createConnection(path)
@@ -24,8 +27,11 @@ export class FocusGuard {
         try {
           const event = JSON.parse(line)
           if (event.result?.type === "subscription_started") this.ready = true
-          if (event.event === "pane_focused") this.pinned.add(event.data.pane_id)
-          if (event.event === "pane_closed") this.pinned.delete(event.data.pane_id)
+          if (event.event === "pane_focused") this.focused = event.data.pane_id
+          if (event.event === "pane_closed") {
+            if (this.focused === event.data.pane_id) this.focused = undefined
+            this.explicitPins.delete(event.data.pane_id)
+          }
           if (event.error) this.socket.destroy()
         } catch { this.socket.destroy() }
       }
@@ -36,8 +42,14 @@ export class FocusGuard {
       report("Herdr focus stream unavailable; automatic viewer closing disabled. Manual cleanup still works.")
     })
   }
-  protect(id: string) { this.pinned.add(id) }
-  canClose(id: string) { return this.ready && !this.pinned.has(id) }
+  pin(id: string) { this.explicitPins.add(id) }
+  unpin(id: string) { this.explicitPins.delete(id) }
+  canClose(id: string): true | CloseBlockReason {
+    if (!this.ready) return "inspection unavailable"
+    if (this.explicitPins.has(id)) return "explicitly pinned"
+    if (this.focused === id) return "currently inspected"
+    return true
+  }
   dispose() {
     this.ready = false
     this.socket.removeAllListeners("close")

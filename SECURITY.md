@@ -68,9 +68,10 @@ Installer configuration backups and new configuration files use mode 0600.
 - The companion runs with the same user's permissions and can read local agent
   title/context data. Its pinned sources and third-party notices are bundled.
   Setup rejects incompatible existing companions instead of overwriting them.
-- Auto-close is optional/off. Selecting a viewer permanently pins it. Event
-  stream failure disables closing; a cross-process last-millisecond focus/work
-  race cannot be eliminated without an atomic host API.
+- Auto-close is optional/off. Current focus is protected transiently; explicit
+  pins remain protected, while returning to the parent does not permanently pin
+  a viewer. Event stream failure disables automatic closing; a cross-process
+  last-millisecond focus/work race cannot be eliminated without an atomic host API.
 - Install/uninstall refuse symlink-managed configs and preserve private backups.
   Do not edit settings concurrently with setup. Later edits to managed sidebar
   tables require manual reconciliation; unrelated edits are preserved.
