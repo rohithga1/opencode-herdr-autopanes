@@ -15,7 +15,8 @@ best-effort; this experimental project provides no response-time guarantee.
 
 ## Supported scope
 
-This policy covers the experimental 0.1.0 release on the tested Ubuntu
+This policy covers experimental 0.2.0 (including its bundled companion) and
+the retained 0.1.0 release on the tested Ubuntu
 26.04.1 LTS / OpenCode 2.3.2 / Herdr 0.9.5 combination. Other versions and
 deployment models are unverified. Do not use it as an isolation boundary for
 hostile tenants or agents.
@@ -49,7 +50,7 @@ Installer configuration backups and new configuration files use mode 0600.
 
 ## Known limitations
 
-- Pane ownership labels and a terminal-context hash prevent accidental
+- Pane ownership metadata (legacy labels accepted) and a terminal-context hash prevent accidental
   cross-terminal cleanup, not deliberate forgery by a same-user process.
 - The preflight existence check and CLI attachment are not atomic. Deleting a
   session in between can hit OpenCode's missing-session behavior; no prompt is
@@ -64,6 +65,15 @@ Installer configuration backups and new configuration files use mode 0600.
 - There are unresolved moderate production dependency findings. Read
   [DEPENDENCIES.md](DEPENDENCIES.md) for advisory IDs, paths, exposure and fix
   constraints. Transitive status does not make a finding safe.
+- The companion runs with the same user's permissions and can read local agent
+  title/context data. Its pinned sources and third-party notices are bundled.
+  Setup rejects incompatible existing companions instead of overwriting them.
+- Auto-close is optional/off. Selecting a viewer permanently pins it. Event
+  stream failure disables closing; a cross-process last-millisecond focus/work
+  race cannot be eliminated without an atomic host API.
+- Install/uninstall refuse symlink-managed configs and preserve private backups.
+  Do not edit settings concurrently with setup. Later edits to managed sidebar
+  tables require manual reconciliation; unrelated edits are preserved.
 
 This is a maintainer-assisted source review and regression testing, **not an
 independent audit**, and not a claim that the plugin is vulnerability-free.

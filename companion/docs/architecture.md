@@ -1,0 +1,240 @@
+# How it works
+
+Herdr owns agent detection, lifecycle state, sidebar rendering, and navigation.
+This plugin turns those existing facts into display tokens. The layout file
+decides how Herdr draws them; the bundled font supplies provider marks.
+
+```text
+Herdr lifecycle event
+  -> run.sh (run.cmd on Windows) -> sidebar.py
+  -> herdr api snapshot
+  -> workspace/tab grouping and task-title selection
+  -> compare desired tokens with current tokens
+  -> herdr pane report-metadata (changed panes only)
+  -> Herdr renders sidebar-layout.toml
+```
+
+Each hook is a short Python process. A file lock serializes overlapping hooks.
+One deadline process sleeps on a local wake channel until the next quiet-period
+deadline. Animation is off by default. A refresh reads one
+snapshot and sends at most one metadata command per changed pane. The CLI calls
+have timeouts. Frequent lifecycle events can still start many hooks; this is not
+a claim of zero overhead or a measured benchmark.
+
+The manifest declares each hook, action, and pane once per platform family.
+Herdr deduplicates action and pane ids without regard to platform, so Windows
+entries carry their own ids; `host.ENTRIES` maps each logical entry (`settings`,
+`refresh`, `clear`) to the current platform's id. If Herdr later accepts one id
+per platform ([herdrdev/herdr#4702](https://github.com/herdrdev/herdr/discussions/4702)),
+only the manifest and that map change. The settings popup draws
+through the platform layer's terminal: curses on POSIX, `msvcrt` keys and VT
+sequences on Windows.
+
+## Grouping and titles
+
+Snapshot order follows Herdr's workspace/tab/pane order. The layout requires
+workspace sorting (`agent_panel_sort = "spaces"`) as its default. Optional
+activity ordering ranks whole workspaces by working status, then the latest
+native lifecycle-change sequence; ties retain native order. A hidden
+`hs_workspace_rank` token and `agent.view.set` apply this same order to Herdr's
+view. Tabs and panes retain native order, and headings are generated from the
+ordered rows. The view is restored at startup and cleared by owner when returning
+to workspace order or removing the plugin. It does not filter agents or move
+actual workspaces. A workspace header lives on its first agent; a tab header lives on its
+first agent within a workspace with more than one actual tab. Shell-only tabs
+count toward tab identity and appear in a gray `hs_terminals` line on the group's
+first agent. They remain terminals; no fake agent identity is reported. A
+workspace with no detected agents at all has no anchor in Herdr's Agents panel
+and remains visible in Spaces.
+
+An agent's first line leads with its status mark and, by default, ends with the
+provider logo; Herdr keeps a trailing piece when it cuts a long line, so the logo
+stays visible. With **Provider logo: Before the name** the logo follows the mark
+instead, inside the status token and in its colour, and a folder's icon is left
+out. A named agent's task gets its own line, starting under the icon or logo.
+
+A pane tagged `hs_parent=<pane id>` that comes right after that agent's rows in
+the same tab is drawn one level in, its branch under the parent's status mark.
+In the status-first rows that branch is long (`├── `), a fixed four cells; with
+a one-cell icon or logo before the parent's name, the child's mark sits under it. Herdr's
+own order is layout order, and a pane split from its opener lands right after
+it, so no reordering is needed; a tag whose parent is gone or not directly
+above is ignored. See [show who opened an agent](setup.md#show-who-opened-an-agent).
+
+The outer workspace-to-tab connection has no branch. Under each tab, agents use
+`├─` and `└─` by default; `branch_length = "short"` uses `├` and `└` to save a
+column while preserving indentation. A workspace with one tab has neither tab headings nor branches.
+The tree is presentational, with native Herdr row selection and navigation.
+
+Titles prefer a user `hs_title` token, then the chat's own title: a native
+exact-session name from Codex's read-only SQLite/index, Claude's newest
+name/title records (an explicit title, else its generated `ai-title`) in the
+final 512 KiB of the session transcript, or Pi's saved session_info. Claude's
+transcript is looked up under both the shell's folder and the agent process's
+own. Project-only and trivial names are rejected. The latest user message is
+not used: it is often a one-word answer or a pasted block. Other cases use the
+existing terminal title, then the herdr agent
+name, then tab and provider fallbacks. A terminal title that only names the
+pane's own directory (Pi's fixed `π - <cwd>`), either the shell's or the agent
+process's, is refused, because the space row already shows where the agent is. So is a
+title that is only the program's own name, such as Claude Code's default
+`Claude Code`.
+Under a name, the status-first rows show a task only when one of the titles
+above describes it; the agent name, tab and provider fallbacks are left out. These are deterministic local heuristics, not conversation
+analysis or a model call.
+
+When the folder an agent process runs in (`foreground_cwd`, not the shell's
+`cwd`) holds `.herdr-agent.toml`, its `icon` (unless the logo goes before the name)
+and `name` fill the agent's row and whichever title was chosen moves to a task
+line under the icon (`hs_row_task`). With pane names on, the pane's own name
+sits beside the agent's name. See [name an agent by its folder](setup.md#name-an-agent-by-its-folder).
+
+Saved conversation context extends these exact-session reads to generic tab
+names and a read-only popup. Hibernate records link sleeping conversations to
+the popup without adding rows in Spaces. See
+[saved conversation context](session-context.md) for storage and ownership rules.
+
+## Token contract
+
+Publisher: `plugin:testy-cool.herdr-sidebar`.
+
+| Token | Meaning |
+| --- | --- |
+| `hs_group` | Workspace heading on its first agent |
+| `hs_tab` | Tab heading on its first agent, when multiple tabs exist |
+| `hs_row_working`, `hs_row_blocked`, `hs_row_done`, `hs_row_idle`, `hs_row_unknown` | First line of an agent: exactly one holds indentation, branch, the native status symbol and the label (a named agent's icon, name and pane name) |
+| `hs_row_logo` | Provider icon/text at the end of the first line; empty with `logo_position = "before_name"`, where the status token carries it |
+| `hs_gap` | Blank row after the last agent before another workspace |
+| `hs_terminals` | Names of terminal-only tabs in this workspace |
+| `hs_row_task` | Task line under a named agent's row, starting under its icon |
+| `hs_agent_name`, `hs_agent_task` | The same name and task as plain text, with no tree, mark, logo or spacing, for clients that draw their own rows; no dim twin |
+| `hs_logo`, `hs_<status>`, `hs_task` | The same rows in the older logo-first layout, still published so an install that has not rerun setup keeps working |
+| `hs_*_dim` | Mutually exclusive dim versions of agent/group display tokens |
+| `hs_space`, `hs_space_dim` | Mutually exclusive workspace labels in Spaces |
+| `hs_title` | Optional user-owned title override; read but never written or cleared by this plugin |
+| `hs_parent` | Optional pane id of the agent that opened this pane, set by the opener; read but never written or cleared by this plugin |
+
+Absent generated values are cleared, including when a pane stops being an
+agent. Native identity/state and other plugins' metadata are not overwritten.
+`clear` removes generated values from the current session. Run it before
+disabling the plugin; future lifecycle events can repopulate them while enabled.
+
+U+2800, a blank braille cell, preserves indentation through metadata whitespace
+trimming. It is a spacer, not a loader. Herdr's first and continuation rows have
+different native offsets, so the prefix arithmetic is intentional.
+
+`inactivity.py` preserves quiet starts per workspace and per idle or unknown
+agent. A working agent clears its own timer and the workspace timer; the other
+agents keep theirs. New or replaced sessions start a fresh quiet period.
+Focus and title changes do not reset these timers. After
+600 seconds, idle or unknown agents dim independently while an active workspace's
+label and shared headings stay bright. Questions and unseen completions retain
+their native marks within active workspaces. A wholly quiet workspace still dims
+its label, headings and all agent rows. Native lifecycle symbols
+in Spaces retain their meaning. `deadline.py` holds a single process lock and
+waits on a wake channel until the earliest deadline. A refresh only probes that
+lock: when it is held, the refresh sends a wake; when it is free, the refresh
+starts a detached scheduler, which takes the lock itself and exits if another
+scheduler won. Refreshes reschedule the wait; no deadlines means exit. Removal
+clears both pane and workspace tokens and cancels the pending wait.
+
+## Platform layer
+
+`host.py` is the only module that chooses an operating system; callers use its
+interface and never branch on the platform. `host_posix.py` and
+`host_windows.py` implement it:
+
+| Interface | POSIX | Windows |
+| --- | --- | --- |
+| `Lock` | `flock` | one-byte `msvcrt` lock, polled when blocking |
+| `connect` (Herdr API) | Unix socket at `HERDR_SOCKET_PATH` | named pipe `\\.\pipe\` + `HERDR_SOCKET_PATH`, overlapped I/O |
+| `WakeListener` / `wake` | private Unix datagram socket | UDP on 127.0.0.1; port in `deadline.port` in the state directory |
+| `spawn_detached` | new session | new process group, no window, only the log handle inherited |
+| `config_home` / `font_dir` | `$XDG_CONFIG_HOME/herdr`; `~/.local/share/fonts` or `~/Library/Fonts` | `%APPDATA%\herdr`; `%LOCALAPPDATA%\Microsoft\Windows\Fonts` |
+| `INTERPRETER_RECORD` | none; `run.sh` runs `python3` | `python-path.txt` in the plugin config directory, read by `run.cmd` |
+| `font_available` (`icons = "auto"`) | `fc-match` names the family | a per-user or machine font registration names an existing file |
+| `Fonts` (setup) | `fc-cache`; Ghostty codepoint map as a managed file | per-user font registration; Windows Terminal's fallback is only read |
+
+Every API step has the same two-second bound on both platforms. A wake carries
+no data and only makes the scheduler reread its state, so a forged datagram is
+harmless. Plugin text files and Herdr CLI output are read and written as UTF-8
+regardless of the Windows code page.
+
+## Optional loaders
+
+`animated_loaders = true` lets the same scheduler update cached working rows
+at eight frames per second. `loader_style` selects dots (default), orbit or pulse;
+all frames use one braille cell instead of the old mixed quarter-circle glyphs.
+Lifecycle refreshes cache the working pane IDs, loader style,
+provider identity, selected token and task text under the shared group lock.
+Frame writes take that same lock and reread the cache, so a completed/closed
+pane cleared by a refresh cannot be repopulated by a stale frame.
+
+Frames use direct API requests: one narrow plugin-registry lookup to stop
+when disabled, then one working-token patch per cached working pane. No CLI
+process, snapshot, title computation or transcript scan runs per frame. API
+failure ends the worker rather than retrying in a busy loop. The next lifecycle
+refresh can restart it. Turning animation off immediately publishes `◔` and
+empties the cache; no working rows means no frame deadlines. Quiet-workspace
+deadlines remain independent.
+
+### Animation cost
+
+An isolated Linux Herdr 0.8.2 demo with two workspaces, one working agent and a
+140×40 terminal client was sampled for eight seconds per mode on 2026-09-08.
+This is the historical four-fps animation baseline, not a measurement of the
+current eight-fps styles. Percentages below are of one CPU core, not the whole machine:
+
+| Process | Animation on | Animation off |
+| --- | ---: | ---: |
+| Herdr server | 2.00% | 0.25% |
+| Herdr client | 0.625% | 0.00% |
+| Shared scheduler | 0.25% | 0.00% |
+
+The scheduler used about 10.2 MiB PSS in both modes because a dimming deadline
+was pending. The disabled client produced no new rendering bytes during the
+observation. These short, one-agent measurements are not a many-agent benchmark;
+cost increases with working rows and depends on the terminal and machine.
+
+## Icon configuration
+
+Set `icons` in the plugin config directory's `config.toml`:
+
+| Value | Behavior |
+| --- | --- |
+| `"font"` | Use the bundled U+E1A0–U+E1AC marks; setup's Ghostty default |
+| `"text"` | Use short labels; selected by setup's `--text` |
+| `"auto"` | Default without setup: use font mode if the font is installed (`fc-match` finds the exact family; on Windows, a font registration names it), otherwise text |
+
+Font discovery does not prove the terminal has loaded the font. macOS without
+Fontconfig will use text in auto mode; setup selects explicit font mode. The
+Claude and Codex outlines extend beyond one nominal cell and use the following
+space in Ghostty, which makes their size readable without shrinking the text.
+
+## Development
+
+Run `python3 -m unittest discover -s tests -v` for dependency-free checks. Font
+tests skip when the optional build dependency is unavailable. For all checks:
+
+```sh
+python3 -m venv .venv-font
+.venv-font/bin/pip install -r requirements-font.txt
+.venv-font/bin/python -m unittest discover -s tests -v
+```
+
+Rebuild fonts with `.venv-font/bin/python tools/build_font.py`, then
+`.venv-font/bin/python tools/build_sidebar_font.py`. Commit the source changes
+and matching `dist/` files. Tests compare rebuilt fonts byte for byte. Preserve
+the artwork provenance in [third-party notices](../assets/THIRD_PARTY_NOTICES.md).
+
+Live verification uses Herdr 0.8.2 and Ghostty 1.3.1 on Linux. The README capture
+comes from an isolated session with four demonstration agent reports. Installation,
+repeat installation, doctor, font rendering, and restoration of the original
+files were exercised there. Unit tests also cover single/multiple-tab transitions,
+unchanged metadata, unrelated settings, and refusal to overwrite later edits.
+macOS terminal rendering remains unverified.
+
+For a dated view of the whole system, the operational boundaries, and the
+questions that are still open, see [project knowledge](knowledge/README.md). Its
+facts are checked by `tools/check_knowledge_docs.py`, which the test suite runs as
+well.

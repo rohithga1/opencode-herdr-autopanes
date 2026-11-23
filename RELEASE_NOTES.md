@@ -1,57 +1,64 @@
-# v0.1.0 — Experimental OpenCode V2 autopanes for Herdr
+# v0.2.0 — Grouped subagent views without terminal splits
 
-When OpenCode delegates to native subagents, this plugin opens named Herdr
-viewers on their existing conversations. Native background execution and result
-delivery remain unchanged. Completed viewers stay open; the four-pane default
-includes retained panes. Overflow warns without cancelling agents.
+**Experimental GitHub prerelease; not published to npm.**
 
-## Install and try
+Watch native OpenCode subagents from a grouped Herdr sidebar. Each child has a
+readable name/status and a full-size background tab in the existing workspace.
+Click its row to inspect, then the parent to return. Launches leave the main
+tab's layout and focus intact. Completed views remain accessible by default.
 
-Download the `.tgz` and `SHA256SUMS` from
-[this GitHub release](https://github.com/rohithga1/opencode-herdr-autopanes/releases/tag/v0.1.0),
-verify the checksum, install the archive in a local prefix and run its packaged
-`install:local` script. The package is not published to npm.
+Defaults: tabs, four viewers per owning orchestrator (retained results count),
+automatic closing off. Split mode remains optional. Overflow skips viewers,
+not native execution. Cleanup is scoped to its owning terminal.
 
-Follow the copy-and-paste [README installation instructions](https://github.com/rohithga1/opencode-herdr-autopanes/blob/v0.1.0/README.md#install-from-the-github-release).
-Then start `opencode` inside Herdr and ask for two harmless parallel subagents.
-Expect two child conversations, normal parent results and retained viewers.
-Use `/herdr-autopanes-cleanup` to close owned viewers; child agents keep running.
-The README also covers configuration, targeted retry and uninstall.
+## One package, both components
 
-## Tested environment and evidence
+The `.tgz` bundles Autopanes 0.2.0 and Herdr Sidebar 0.3.0 at upstream commit
+`8a45adc5c0dd02f5cffeae5e900738035c9b3b82`, with cross-tab extension 0.2.0.
+Upstream `hs_parent` alone cannot group across tabs. Exact sources, licenses,
+notices and local-change attribution are included. Text mode requires no font.
+Python 3.11+ is required alongside Node/npm, OpenCode 2.3.2 and Herdr 0.9.5.
 
-Ubuntu **26.04.1 LTS**, OpenCode **2.3.2**, Herdr **0.9.5**, Node **26.13.1**,
-npm **12.2.3**. No support beyond this tested combination is claimed.
+Download the tarball and SHA256SUMS; verify them, install with npm into a stable
+versioned prefix, then run the packaged `scripts/setup.py install` and `doctor`
+inside the target Herdr terminal. Full copy-paste commands are in README.md.
+No service restart is needed. No unpinned companion branch is fetched.
 
-Earlier local tarball testing covered an empty-prefix install, a fresh TUI,
-automatic parallel child viewers, correct IDs/results, retention, cleanup and
-packaged uninstall. The release receipt in
-[release-checks/0.1.0.md](https://github.com/rohithga1/opencode-herdr-autopanes/blob/v0.1.0/release-checks/0.1.0.md)
-identifies the final artifact and its repeated acceptance results.
+## Upgrade and rollback
 
-## Security and limitations
+Keep the v0.1.0 directory. Install 0.2.0 in a separate prefix, then:
 
-The release adds URL/origin and child ID/path validation, rejects preflight
-redirects, keeps launch credentials in private one-use files, and makes
-configuration backups private. See
-[SECURITY.md](https://github.com/rohithga1/opencode-herdr-autopanes/blob/v0.1.0/SECURITY.md)
-for the verified private reporting channel and the limits of this source review.
+```sh
+NEW="$HOME/.local/share/opencode-herdr-autopanes/0.2.0/node_modules/opencode-herdr-autopanes"
+python3 "$NEW/scripts/setup.py" install --upgrade-from "/absolute/path/to/old/package" --dry-run
+python3 "$NEW/scripts/setup.py" install --upgrade-from "/absolute/path/to/old/package"
+python3 "$NEW/scripts/setup.py" doctor
+```
 
-- **Native nested delegation remains unverified live**: tested children lacked
-  the delegation tool. Deep filtering has regression coverage.
-- **Fresh-process recovery of existing retained panes is unverified live**.
-  Fresh startup and hot reload are different tests.
-- Alternating splits can make panes narrow; closing several panes may briefly
-  shift focus. Launch focus and final parent focus were verified.
-- Only reproducible local service or explicit OpenCode Basic credentials are
-  supported. URLs must be HTTPS or loopback HTTP origins. Private generated
-  standalone credentials, URL tickets/path prefixes, remote workspace IDs and
-  cross-machine Herdr forwarding are unsupported. Remote Basic auth is unverified.
-- **24 moderate dependency-package findings remain** (25 in consumer-prefix
-  audits, including this package's propagated entry), from two glob/minimatch
-  advisories in the production dependency tree. No forced upgrades or arbitrary
-  downgrades were made; see
-  [DEPENDENCIES.md](https://github.com/rohithga1/opencode-herdr-autopanes/blob/v0.1.0/DEPENDENCIES.md).
+This replaces the old registration and selects the new defaults. Existing
+viewers are not moved or closed. `setup.py rollback` restores the recorded old
+registration; `uninstall` removes owned registrations without restoring it.
+Unrelated settings, later edits and private backups are preserved. Edits to
+managed sidebar tables stop removal until reconciled.
 
-MIT license, copyright 2026 rohithga1. This is a GitHub **prerelease**, not a
-stable-support promise or an npm publication.
+Existing stock/customized companions are not overwritten: remove their managed
+configuration with their own installer, retain the checkout/backups, then unlink
+their registration before installing this bundle. Byte-verified compatible
+companions can be reused and remain user-owned.
+
+## Safety and limitations
+
+- Auto-close is opt-in; selecting a viewer permanently pins it. Active native
+  work, background shells, pending forms/permissions and unknown/failed states
+  retain it. No atomic cross-process close/inspection guarantee exists.
+- Visual grouping is not collapsible. Viewers are real resource-consuming TUIs.
+- Native nested delegation, cold recovery and explicit remote HTTPS Basic auth
+  remain unverified live. Auth permits HTTPS or loopback HTTP origins only.
+- Same-user metadata is bookkeeping, not authentication. One sidebar override
+  reporter should be active. Cleanup may briefly shift Herdr focus.
+- Two moderate dependency advisories remain; see DEPENDENCIES.md for exact
+  findings/exposure. No forced dependency upgrades were applied.
+
+The release receipt in `release-checks/0.2.0.md` records final artifact checksums,
+isolated package-only acceptance, configuration preservation and test boundaries.
+v0.1.0 and its tested assets are preserved.

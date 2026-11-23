@@ -4,13 +4,22 @@ export type Session = {
   title?: string
   location: { directory: string; workspaceID?: string }
 }
-export type Pane = { pane_id: string; label?: string | null }
+export type Pane = {
+  pane_id: string; label?: string | null; focused?: boolean; agent_status?: string
+  tokens?: Record<string, string>
+}
+export const owns = (pane: Pane, prefix: string) =>
+  pane.tokens?.ocap_owner === prefix || pane.label?.startsWith(prefix) === true
+export const paneSession = (pane: Pane, prefix: string) =>
+  pane.tokens?.ocap_owner === prefix ? pane.tokens.ocap_session :
+    pane.label?.startsWith(prefix) ? pane.label.slice(prefix.length).split(" ")[0] : undefined
 // A class stays opaque in Solid storage; nested plain objects are readonly proxies.
 export class State {
   tail = Promise.resolve()
   seen = new Set<string>()
   owner?: string
   pending = new Map<string, number>()
+  completed = new Map<string, number>()
 }
 export const newState = () => new State()
 
@@ -30,6 +39,8 @@ export class Manager {
     launch(session: Session, label: string): Promise<void>
     close(id: string): Promise<void>
     report(message: string): void
+    safeToClose?(id: string): Promise<boolean>
+    canClosePane?(pane: Pane): boolean
   }
   constructor(state: State, io: Manager["io"]) {
     this.state = state
@@ -68,8 +79,8 @@ export class Manager {
       if (!session.parentID || !await this.descendant(session.parentID) || this.disposed) return
       // Claim before touching Herdr: even failed layout discovery must deduplicate.
       this.state.seen.add(id)
-      const panes = (await this.io.list()).filter((p) => p.label?.startsWith(this.io.prefix))
-      if (panes.some((p) => p.label?.startsWith(`${this.io.prefix}${id} `))) {
+      const panes = (await this.io.list()).filter((p) => owns(p, this.io.prefix))
+      if (panes.some((p) => paneSession(p, this.io.prefix) === id)) {
         return
       }
       if (panes.length >= this.io.max) {
@@ -85,11 +96,37 @@ export class Manager {
     return this.enqueue(async () => {
       // Ownership labels include the owning terminal context, not just project.
       for (const pane of await this.io.list()) {
-        if (!pane.label?.startsWith(this.io.prefix)) continue
+        if (!owns(pane, this.io.prefix)) continue
         try { await this.io.close(pane.pane_id) }
         catch (error) { this.io.report(`Could not close ${pane.pane_id}: ${String(error)}`) }
       }
       this.io.report("Plugin-owned viewers closed. Child sessions keep running on the OpenCode server.")
+    })
+  }
+
+  sweep(delayMs: number, now = Date.now()) {
+    return this.enqueue(async () => {
+      if (this.disposed || !this.io.safeToClose) return
+      for (const pane of await this.io.list()) {
+        if (!owns(pane, this.io.prefix)) continue
+        const id = paneSession(pane, this.io.prefix)
+        if (!id || pane.focused || this.io.canClosePane?.(pane) === false ||
+            !["idle", "done"].includes(pane.tokens?.ocap_status ?? pane.agent_status ?? "") ||
+            !await this.io.safeToClose(id)) {
+          this.state.completed.delete(pane.pane_id)
+          continue
+        }
+        const since = this.state.completed.get(pane.pane_id) ?? now
+        this.state.completed.set(pane.pane_id, since)
+        if (now - since < delayMs) continue
+        const current = (await this.io.list()).find((p) => p.pane_id === pane.pane_id)
+        if (!current || !owns(current, this.io.prefix) || current.focused ||
+            !["idle", "done"].includes(current.tokens?.ocap_status ?? current.agent_status ?? "") ||
+            !await this.io.safeToClose(id) || this.io.canClosePane?.(current) === false) continue
+        if (this.disposed) return
+        await this.io.close(pane.pane_id)
+        this.state.completed.delete(pane.pane_id)
+      }
     })
   }
 
