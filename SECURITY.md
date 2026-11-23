@@ -15,7 +15,7 @@ best-effort; this experimental project provides no response-time guarantee.
 
 ## Supported scope
 
-This policy covers experimental 0.2.0 (including its bundled companion) and
+This policy covers experimental 0.2.1 (including its bundled companion) and
 the retained 0.1.0 release on the tested Ubuntu
 26.04.1 LTS / OpenCode 2.3.2 / Herdr 0.9.5 combination. Other versions and
 deployment models are unverified. Do not use it as an isolation boundary for

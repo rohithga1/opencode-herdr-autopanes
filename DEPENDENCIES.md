@@ -1,6 +1,6 @@
 # Dependency advisory review — rechecked 2026-11-22
 
-## v0.2.0
+## v0.2.1
 
 Direct SDK pins remain 2.3.2; no forced fixes or npm publication. The checkout
 audit still reports 24 moderate entries and the two advisory IDs below.
@@ -8,7 +8,7 @@ The bundled Python 3.11+ companion uses the standard library at runtime.
 Its optional upstream font-building tools are not installed by our text-mode
 flow. Redistribution notices for the included upstream artwork/fonts are in
 `companion/assets/THIRD_PARTY_NOTICES.md`; all corresponding license texts ship.
-The final consumer audit is recorded in `release-checks/0.2.0.md`.
+The final consumer audit is recorded in `release-checks/0.2.1.md`.
 The counts/versions below describe the inspected graph, not a guarantee for
 future transitive dependency resolutions.
 

@@ -1,9 +1,9 @@
 # Verification history
 
-## Local close-completed/documentation update — 2026-11-23
+## v0.2.1 close-completed/documentation acceptance — 2026-11-23
 
-This focused patch is intentionally **unreleased and local**. It does not alter
-v0.1.0/v0.2.0 tags, release assets or checksums.
+This release preserves the v0.1.0/v0.2.0 tags, release assets and checksums.
+The final artifact receipt is [release-checks/0.2.1.md](release-checks/0.2.1.md).
 
 The new palette/slash action `/herdr-autopanes-close-completed` reuses the
 existing activity, ownership, focus/pin and final recheck gates. It closes only
@@ -18,7 +18,7 @@ sidebar capture near the top. `docs/workspaces.md` explains Herdr reconnect,
 spaces, tabs, directories and workspace creation. `docs/demo-script.md` is the
 short recording fallback; no video was staged.
 
-Checks and live validation for this patch:
+Checks and live validation:
 
 - 28 TypeScript tests passed, including scoped mixed-state close coverage:
   completed owned viewer closes; running viewer, focused viewer, pinned viewer
@@ -53,6 +53,11 @@ was removed while a viewer carrying explicit `ocap_pin=1` and a FIFO-backed
 panes/server were stopped afterward. The focused-viewer gate and reasoned
 summary are covered by regression tests; a separate client-focused viewer
 cannot reliably receive a parent slash command through the diagnostic PTY.
+
+The final v0.2.1 tarball was installed from its exact bytes in a fresh isolated
+prefix and passed setup/doctor, installed-source regressions, package privacy
+inspection and live two-parent close-completed behavior. Its SHA-256 is
+`4258db3ff4048e56e6366dcb4bdf1012561d63da62e6f7c08e2c9a23f8637ce3`.
 
 ## v0.2.0 packaged-release acceptance — 2026-11-23
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install both v0.2.0 components inside the intended Herdr terminal."""
+"""Install both release components inside the intended Herdr terminal."""
 import argparse
 import hashlib
 import json
@@ -16,7 +16,7 @@ sys.path.insert(0, str(COMPANION))
 import setup_sidebar as sidebar
 import host
 
-VERSION = "0.2.0"
+VERSION = json.loads((ROOT / "package.json").read_text())["version"]
 
 
 def regular(path):
@@ -104,7 +104,7 @@ def main():
     cli = Path(os.environ.get("OPENCODE_CONFIG_DIR") or
                str(Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "opencode")) / "cli.json"
     cli = cli.absolute()
-    journal = cli.parent / "herdr-autopanes-0.2.0.json"
+    journal = cli.parent / f"herdr-autopanes-{VERSION}.json"
     original = read(cli)
     current = config(original)
     prior = read(journal)
@@ -123,7 +123,7 @@ def main():
     regular(herdr_config)
     preferences = sidebar.plugin_config_dir(binary) / "config.toml"
     regular(preferences)
-    companion_state = herdr_config.parent / "herdr-autopanes-0.2.0"
+    companion_state = herdr_config.parent / f"herdr-autopanes-{VERSION}"
     regular(companion_state / "install.json")
     if state and (state["package"] != str(ROOT) or state["herdr_config"] != str(herdr_config)):
         raise RuntimeError("An installation record belongs to another package/configuration. Use that installation's setup.")
@@ -188,8 +188,13 @@ def main():
         if not args.upgrade_from or len(old) != 1 or package(old[0][1]) != str(args.upgrade_from.absolute()):
             raise RuntimeError("Existing Autopanes registration found. Supply --upgrade-from with its exact absolute package path; no duplicates added.")
         old_meta = json.loads((args.upgrade_from / "package.json").read_text())
-        if old_meta.get("version") != "0.1.0":
-            raise RuntimeError("--upgrade-from currently supports the released v0.1.0 package.")
+        def version(value):
+            try:
+                return tuple(int(part) for part in value.split("."))
+            except (AttributeError, ValueError):
+                return ()
+        if not version(old_meta.get("version")) or version(old_meta["version"]) >= version(VERSION):
+            raise RuntimeError(f"--upgrade-from must name an older released package than v{VERSION}.")
     elif args.upgrade_from and not state:
         raise RuntimeError("--upgrade-from does not match an existing registration.")
     same = [e for e in entries if package(e) == str(ROOT)]
@@ -217,7 +222,7 @@ def main():
         print(f"Would register {ROOT} in {cli}; backups: {journal.parent}")
         return
     if not state:
-        backup = cli.with_name(f"cli.json.before-autopanes-0.2.0-{time.time_ns()}.bak")
+        backup = cli.with_name(f"cli.json.before-autopanes-{VERSION}-{time.time_ns()}.bak")
         if original is not None:
             write(backup, original)
         state = {"package": str(ROOT), "herdr_config": str(herdr_config), "companion_owned": owned,

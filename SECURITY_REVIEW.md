@@ -5,7 +5,7 @@ or a guarantee of absence of vulnerabilities.
 
 ## Checked and hardened
 
-### v0.2.0 packaging and companion
+### v0.2.1 packaging and companion
 
 - The complete pinned MIT companion snapshot retains upstream copyrights and
   the Apache/MIT artwork notices. Recommended text mode installs no font.
@@ -86,5 +86,5 @@ Private GitHub vulnerability reporting was enabled and verified for the project;
 Publication scanning covers the intended source files, Git history and archive
 contents; the release receipt records its result. Raw local diagnostics,
 authentication/config files, original detailed operational captures, dependency
-directories and generated archives are not committed as source. v0.2.0 vendors
+directories and generated archives are not committed as source. v0.2.1 vendors
 the explicitly attributed companion; our existing MIT holder remains unchanged.
