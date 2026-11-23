@@ -26,13 +26,14 @@ console.log(JSON.stringify({result: args[1]==='list' ? {panes:[]} : {pane:{pane_
     })
     const session = { id: "ses_actual", title: "subagent", location: { directory: "/project with 'quotes'" } }
     const endpoint = { url: "http://localhost:4096", auth: { type: "basic" as const, username: "opencode", password: "secret-not-in-argv" } }
-    const h = new Herdr((m) => reports.push(m), pending)
+    const h = new Herdr((m) => reports.push(m), pending, "split")
     await h.launch(session, "ocap:owner:ses_actual subagent", endpoint)
     const calls = (await readFile(join(dir, "calls"), "utf8")).trim().split("\n").map((s) => JSON.parse(s) as string[])
     assert.deepEqual(calls[0], ["pane", "split", "--pane", "w1:p1", "--direction", "right",
       "--cwd", session.location.directory, "--env", "OPENCODE_HERDR_VIEWER=1", "--no-focus"])
-    assert.deepEqual(calls[1], ["pane", "rename", "w1:p2", "ocap:owner:ses_actual subagent"])
-    assert.equal(calls[2]![1], "run")
+    assert.deepEqual(calls[1], ["pane", "rename", "w1:p2", "subagent"])
+    assert.ok(calls[2]!.includes("ocap_owner=ocap:owner:"))
+    assert.equal(calls[3]![1], "run")
     assert.equal(JSON.stringify(calls).includes(endpoint.auth.password), false)
     const launchDir = [...pending.keys()][0]!
     assert.equal((await stat(launchDir)).mode & 0o777, 0o700)
@@ -46,6 +47,17 @@ console.log(JSON.stringify({result: args[1]==='list' ? {panes:[]} : {pane:{pane_
     await h.check()
     assert.equal(pending.size, 0)
     assert.match(reports[0]!, /did not acknowledge startup/)
+    const beforeTabs = calls.length
+    const tabs = new Herdr((m) => reports.push(m), pending)
+    await tabs.launch(session, "ocap:owner:ses_actual Read license", endpoint)
+    const tabCalls = (await readFile(join(dir, "calls"), "utf8")).trim().split("\n")
+      .map((s) => JSON.parse(s) as string[]).slice(beforeTabs)
+    assert.deepEqual(tabCalls[0], ["tab", "create", "--workspace", "w1", "--label", "Read license",
+      "--cwd", session.location.directory, "--env", "OPENCODE_HERDR_VIEWER=1", "--no-focus"])
+    assert.ok(tabCalls.every((args) => !(args[0] === "pane" && ["split", "zoom", "focus", "resize"].includes(args[1]!))))
+    assert.ok(tabCalls[2]!.includes("hs_parent=w1:p1"))
+    for (const path of pending.keys()) await rm(path, { recursive: true, force: true })
+    pending.clear()
     process.env.FAIL_RUN = "1"
     const failed = new Herdr((m) => reports.push(m), pending)
     await assert.rejects(failed.launch(session, "ocap:owner:ses_actual subagent", endpoint), /Herdr pane run failed/)

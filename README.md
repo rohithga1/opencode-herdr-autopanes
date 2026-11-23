@@ -1,209 +1,202 @@
 # OpenCode Herdr Autopanes
 
-When OpenCode delegates to subagents, this plugin automatically opens Herdr panes so you can watch their work.
+**Watch OpenCode subagents from a grouped sidebar without splitting your main terminal.**
 
-Ask your main agent to run two jobs in parallel. Each native child session gets
-a named pane showing its actual conversation and tools. Results return to the
-main agent normally, and completed panes stay open for inspection. The plugin
-does not repeat prompts or replace OpenCode's delegation.
+Native subagents appear beneath their main agent in Herdr's left sidebar.
+Click a named child to inspect its conversation full-size; click its parent to
+return. Each viewer is a real background terminal tab in the **same workspace**.
+Launching children does not split, resize or steal focus from your main tab.
+Completed views stay available.
 
-> **Experimental v0.1.0 prerelease.** Tested only on Ubuntu 26.04.1 LTS,
-> OpenCode 2.3.2 and Herdr 0.9.5. Node.js 26.13.1 and npm 12.2.3 were used for
-> validation. The package declares Node 22.18+, but other environments are
-> unverified. Expect rough edges and the limitations below.
+![Two main agents with separately grouped child viewers](docs/grouped-sidebar.png)
 
-## Before you install
+Real Herdr terminal-cell capture from the isolated package test, cropped to the
+sidebar and rasterized for display. Test conversation names; not a desktop screenshot.
 
-- Have OpenCode **2.3.2** and Herdr **0.9.5** installed. No upgrade is required.
-- Have `node`, `npm`, `curl`, and `sha256sum` available on the server.
-- Run your main OpenCode TUI **inside a Herdr pane**. The normal local shared
-  OpenCode service is the recommended connection.
-- Install only one copy of this plugin. If you previously registered a checkout,
-  run its `npm run uninstall:local` before switching copies.
+**Experimental v0.2.0.** Tested on Ubuntu 26.04.1 LTS, OpenCode **2.3.2**,
+Herdr **0.9.5**, Node **26.13.1**, npm **12.2.3**, Python **3.14.4**.
+The setup currently supports Linux and requires Python **3.11+**, Node
+**22.18+**, npm, `curl`, `sha256sum`, and working `opencode`/`herdr` commands.
+Only the exact environment above was tested; the installer requires Herdr 0.9.5.
+
+**Grouping uses the bundled companion extension**, not stock `hs_parent`.
+Herdr's stock rows require a terminal; upstream `hs_parent` groups only adjacent
+same-tab panes. We bundle Herdr Sidebar **0.3.0**, pinned at
+`8a45adc5c0dd02f5cffeae5e900738035c9b3b82`, with Autopanes extension **0.2.0**.
+No upstream branch is fetched. Text labels (`OC`) need no extra fonts in VS Code.
+See [attribution and changes](companion/UPSTREAM.md).
 
 ## Install from the GitHub release
 
-**Run in a regular server shell**, not in OpenCode's prompt. These commands
-download the actual release artifact; the package is **not published to npm**.
+Run shell commands **inside a terminal in the intended Herdr session**.
+Do not run setup from an OpenCode prompt. No `sudo` is needed.
+Use this versioned, stable directory rather than a development checkout:
 
 ```sh
-mkdir -p "$HOME/Downloads/opencode-herdr-autopanes-0.1.0"
-cd "$HOME/Downloads/opencode-herdr-autopanes-0.1.0"
-release="https://github.com/rohithga1/opencode-herdr-autopanes/releases/download/v0.1.0"
-curl --fail --location --proto '=https' --tlsv1.2 -O "$release/opencode-herdr-autopanes-0.1.0.tgz"
-curl --fail --location --proto '=https' --tlsv1.2 -O "$release/SHA256SUMS"
-sha256sum --check SHA256SUMS
-
-prefix="${XDG_DATA_HOME:-$HOME/.local/share}/opencode-herdr-autopanes"
-npm install --prefix "$prefix" --omit=dev "$PWD/opencode-herdr-autopanes-0.1.0.tgz"
-pkg="$prefix/node_modules/opencode-herdr-autopanes"
-npm --prefix "$pkg" run install:local
+mkdir -p "$HOME/.local/share/opencode-herdr-autopanes/0.2.0"
+cd "$HOME/.local/share/opencode-herdr-autopanes/0.2.0"
+curl -fLO https://github.com/rohithga1/opencode-herdr-autopanes/releases/download/v0.2.0/opencode-herdr-autopanes-0.2.0.tgz
+curl -fLO https://github.com/rohithga1/opencode-herdr-autopanes/releases/download/v0.2.0/SHA256SUMS
+sha256sum -c SHA256SUMS
+npm install --prefix "$PWD" --ignore-scripts --save-exact ./opencode-herdr-autopanes-0.2.0.tgz
+python3 node_modules/opencode-herdr-autopanes/scripts/setup.py install --dry-run
+python3 node_modules/opencode-herdr-autopanes/scripts/setup.py install
+python3 node_modules/opencode-herdr-autopanes/scripts/setup.py doctor
 ```
 
-Keep that installation directory while the plugin is enabled. No source
-checkout or build is needed. The checksum detects download corruption; it is
-not a separate cryptographic signature from the maintainer.
+This downloads the release artifact and installs npm dependencies; it does **not**
+publish anything to npm. The tarball contains both components and their licenses.
+Do not move or delete the versioned directory while either component is registered.
 
-The installer adds the package's absolute path to `~/.config/opencode/cli.json`.
-It preserves other settings/plugins and writes a timestamped, mode-0600 `.bak`
-before modifying an existing file. Installation is idempotent. Invalid JSON
-causes an error without changing the configuration. The installed Herdr
-integration is not replaced.
-Symlink-managed `cli.json` files are refused rather than replacing the link;
-register the plugin manually if your dotfile manager requires a symlink.
+### Upgrade from v0.1.0
 
-`XDG_CONFIG_HOME` and `OPENCODE_CONFIG_DIR` are respected. For an isolated trial,
-set `OPENCODE_CONFIG_DIR` to a separate directory **before registration** and use
-the same environment when launching OpenCode. This overrides OpenCode's config
-directory for that TUI; it is not just a plugin setting.
-
-CLI settings are watched and reload live; **no shared-server restart is needed**.
-If you installed while outside Herdr, open a fresh TUI inside Herdr rather than
-trying to change an existing process's environment. If the status command is
-missing, check the plugin configuration or open a fresh TUI; do not restart the
-server or stop running agents just to apply the plugin.
-
-## First use
-
-**In a shell inside Herdr**, change to your project and start OpenCode:
+First download, checksum and `npm install` v0.2.0 as above. Keep your old package
+directory for rollback. Find its exact absolute `package` path in
+`~/.config/opencode/cli.json` (or your configured CLI directory), then run:
 
 ```sh
-cd /path/to/your/project
-opencode
+OLD="/absolute/path/to/old/node_modules/opencode-herdr-autopanes"
+NEW="$HOME/.local/share/opencode-herdr-autopanes/0.2.0/node_modules/opencode-herdr-autopanes"
+python3 "$NEW/scripts/setup.py" install --upgrade-from "$OLD" --dry-run
+python3 "$NEW/scripts/setup.py" install --upgrade-from "$OLD"
+python3 "$NEW/scripts/setup.py" doctor
 ```
 
-**In OpenCode**, try `/herdr-autopanes-status`, then ask:
+The old registration is replaced, not duplicated. v0.2.0 applies its tab,
+four-viewer and retention defaults; other plugin options are preserved.
+Existing viewers are not moved or closed. Prefer cleaning up old viewers with
+v0.1.0's cleanup command before switching, if you no longer need them.
+The original v0.1.0 release/tag/assets remain available.
 
-> Run two harmless native subagents in parallel. One reads README.md; the other
-> reads LICENSE. Each should return its own session ID and a one-line summary.
+### Existing sidebar installations
 
-You should see two named panes appear without taking focus from the main pane.
-Each displays the corresponding child conversation, and both summaries return
-to the parent. The panes stay open after completion.
+Setup reuses a companion only if all bundled files match and it is already
+enabled, correctly configured and in text mode. Reused installations remain
+user-owned and are not removed by Autopanes uninstall.
 
-The first selected session owns this TUI's descendant tree. Browsing another
-session does not transfer ownership; use another main TUI in its own Herdr pane
-to watch a different tree. Viewer panes cannot create more viewers. These are
-normal OpenCode TUIs, **not enforced read-only clients**.
+A stock, customized or earlier local-prototype companion will be refused with
+its files intact. Keep its checkout and backups; use **its own setup uninstall**
+flow, then `herdr plugin unlink testy-cool.herdr-sidebar`, before installing
+the bundle. Do not overwrite a customized checkout with release files.
+Other detected `agent.view.set` plugin reporters are refused. Herdr has a
+single sidebar view override; do not run competing sidebar reporters.
 
-## Pane limit and configuration
+### What setup changes
 
-The default is **four plugin-managed panes per owning terminal**. Completed
-panes count toward the limit. If all slots are occupied, the plugin reports the
-skipped session; **the agent still runs and returns results normally**. It does
-not close retained panes or cancel work to make space.
+- Adds/replaces only this plugin's entry in OpenCode's `cli.json`.
+- Links the bundled `testy-cool.herdr-sidebar` companion from the stable package.
+- Merges Herdr agent rows, workspace-name dimming, `agent_panel_sort = "spaces"`
+  and a settings shortcut only if unclaimed. It does not change fonts or width.
+- Saves private configuration backups and an ownership journal next to the
+  affected configs. Unrelated settings are preserved.
 
-In your existing `cli.json`, change this plugin's string entry to an object:
+OpenCode watches CLI settings; Herdr setup reloads its configuration and
+refreshes the sidebar. **No service restart is required.** If your TUI has no
+session selected, select the intended main conversation. That first session
+owns this terminal's group. For another orchestrator, use another Herdr tab/TUI.
+
+## Try it
+
+Ask your main OpenCode agent:
+
+> Launch two native subagents concurrently: “Read license” should summarize
+> LICENSE; “Read package” should summarize package.json. Do not change files.
+> Return both results normally.
+
+The two named rows appear beneath that main agent. Click either child for its
+conversation; click the main row to return. Separate orchestrators have separate
+groups even in one workspace. Status is readable without a provider icon font.
+The tree is visual, not collapsible. Long names may clip; widen the sidebar in
+Herdr settings if desired.
+
+### Limits, inspection and cleanup
+
+The default is **four viewers per owning terminal/orchestrator**, including
+retained completed viewers. Overflow warns and skips the viewer; native agents
+continue and return normally. Close an old viewer to free a slot, then use:
+
+```text
+/herdr-autopanes-status
+/herdr-autopanes-retry CHILD_SESSION_ID
+/herdr-autopanes-cleanup
+```
+
+Cleanup asks for confirmation and closes only this terminal's owned viewers.
+It never cancels native agents. During active work, use `Ctrl+P` →
+**Close plugin-owned Herdr viewers** if slash input is unavailable.
+Manual closing does not automatically reopen a viewer; targeted retry does.
+
+### Options
+
+Edit only the `options` of this package entry in `cli.json`:
 
 ```json
 {
-  "plugins": [
-    {
-      "package": "/absolute/install/prefix/node_modules/opencode-herdr-autopanes",
-      "options": { "maxPanes": 4 }
-    }
-  ]
+  "mode": "tabs",
+  "maxPanes": 4,
+  "closeOnCompletion": false,
+  "closeDelaySeconds": 60
 }
 ```
 
-Use the absolute package path printed by the installer, and keep your other
-plugin entries. Options:
+`mode: "split"` keeps the earlier alternating split layout available.
+`maxPanes` accepts positive safe integers. Completed views count in either mode.
+Automatic closing is **off by default**. If enabled, it waits the configured
+nonnegative delay, checks native background work/descendants and blockers, then
+rechecks before closing. Unknown/error/failed states are retained.
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `maxPanes` | `4` | Positive integer; includes retained completed viewers |
-| `server` | Main TUI's `--server`, then local service discovery | Explicit origin for reproducing the same server connection; no password in this option |
+**Selecting a viewer permanently pins it against auto-close**, even after
+returning to the main agent. Existing viewers are pinned on reload; failure of
+the focus-event stream disables auto-close. Use manual close/cleanup for pins.
+Herdr has no atomic transaction with OpenCode to guard a click or resumed work
+racing an already-dispatched close; retention remains the safest default.
 
-`OPENCODE_HERDR_BINARY` can override the viewer executable. By default the
-plugin uses the main TUI's own executable. This is trusted local configuration,
-not an agent-controlled command.
+## Uninstall or roll back
 
-## Cleanup is not cancellation
-
-Use these slash commands **inside the owning OpenCode TUI**:
-
-| Command | Action |
-| --- | --- |
-| `/herdr-autopanes-status` | Show the terminal context or why viewing is inactive |
-| `/herdr-autopanes-cleanup` | Confirm, then close only this terminal's plugin-labelled viewers |
-| `/herdr-autopanes-retry SESSION_ID` | Retry a specific descendant after a failure, overflow or manual closure |
-| `/herdr-autopanes-retry` | Retry descendants already observed by this TUI |
-
-Cleanup removes viewers, **not the native child sessions**. Agents keep running
-on OpenCode's server. Cancelling an agent is a separate native OpenCode action.
-Closing a pane manually does not automatically reopen it; retry explicitly.
-
-## Troubleshooting
-
-- **No panes:** check the status command and plugin entry. `node` and `herdr`
-  must be on PATH. Only new creation/execution events are automatic; use retry
-  with an explicit descendant ID for older work.
-- **Wrong terminal context:** launch the main TUI inside Herdr. Do not manually
-  spoof `HERDR_ENV` or guess a socket. The plugin uses the TUI's own pane/socket,
-  never the shared server's environment or Herdr's focused-pane fallback.
-- **Pane limit reached:** completed panes still count. Close unwanted viewers
-  or use cleanup, then retry. Freeing a slot does not automatically replay overflow.
-- **Failed viewer:** inspect its terminal output and the warning toast. A
-  retained failed viewer also counts until closed. Process startup acknowledgement
-  does not prove successful TUI rendering.
-- **Authentication:** local shared-service credentials are discovered without
-  starting another server. For an explicit server, inherit `OPENCODE_PASSWORD`
-  (or `OPENCODE_SERVER_PASSWORD`) when launching the main TUI. Only Basic auth
-  with the OpenCode username is supported. URLs must be HTTPS or loopback HTTP
-  origins, without userinfo, path prefixes, query tickets or fragments. Preflight
-  checks reject redirects. Never put secrets in a URL or plugin options.
-
-## Known limits and security
-
-- Splits alternate right/down; this is not adaptive tiling. Four panes can make
-  the main pane narrow. Launch focus was preserved in testing; closing multiple
-  panes can briefly shift focus while Herdr reconciles layout.
-- **Native nested delegation is unverified live:** the tested child did not have
-  a delegation tool. Deep ancestry filtering has regression-test coverage.
-- **Fresh-process recovery of existing retained panes is unverified live.**
-  Fresh startup and hot reload passed, but those are different tests.
-- Private standalone servers with inaccessible generated credentials, non-Basic
-  auth, remote workspace IDs and cross-machine Herdr forwarding are unsupported.
-  Explicit remote HTTPS Basic auth has not been live-tested.
-- Herdr's existing integration may report the family root in `agent_session`
-  metadata even when the viewer displays the correct child conversation.
-- Ownership labels are local bookkeeping, not protection against other processes
-  running as your user. Renaming their prefix or moving panes to another
-  workspace prevents reliable recovery/cleanup. A crash between split and naming
-  can leave an unlabelled pane that the plugin will not guess ownership of.
-- Abrupt termination can leave a private `herdr-viewer-*` directory under
-  OpenCode's temporary directory. Remove a specific stale directory only after
-  confirming its viewer is gone. Do not delete live viewers' directories.
-- The reviewed dependency tree still has **24 moderate affected-package findings**
-  from two advisories (**25** in a consumer prefix, including this package's
-  propagated entry). These are not proof of exploitation, nor are they dismissed
-  as harmless. Read [SECURITY.md](SECURITY.md), [DEPENDENCIES.md](DEPENDENCIES.md)
-  and the [release notes](RELEASE_NOTES.md) before deciding where to run it.
-
-## Uninstall
-
-First run `/herdr-autopanes-cleanup` inside OpenCode if you want its viewers
-closed. **In a regular server shell**, using the same config environment as setup:
+Run from a shell inside the same Herdr session. First clean up viewers if desired.
 
 ```sh
-prefix="${XDG_DATA_HOME:-$HOME/.local/share}/opencode-herdr-autopanes"
-npm --prefix "$prefix/node_modules/opencode-herdr-autopanes" run uninstall:local
-npm uninstall --prefix "$prefix" opencode-herdr-autopanes
+NEW="$HOME/.local/share/opencode-herdr-autopanes/0.2.0/node_modules/opencode-herdr-autopanes"
+python3 "$NEW/scripts/setup.py" uninstall --dry-run
+python3 "$NEW/scripts/setup.py" uninstall
 ```
 
-Unregistration backs up the configuration again and removes only this package's
-exact path, including its object/options form. Other settings, sessions and
-panes remain. No server restart is needed. Do not restore an entire old backup
-over newer unrelated edits.
+This unregisters the owned components, restores only owned sidebar settings,
+and preserves unrelated later edits. Customized managed sidebar tables cause
+a refusal, not an overwrite: reconcile them using the private backup before
+retrying. Preferences, package files and backups remain for inspection. You can
+remove the versioned directory after unregistering; never remove a reused
+companion's files.
 
-## Contributing
+For a v0.1.0 upgrade rollback, use `rollback` **instead of** `uninstall`:
 
-Issues and focused pull requests are welcome at
-[the GitHub repository](https://github.com/rohithga1/opencode-herdr-autopanes).
-For security issues use the private channel in [SECURITY.md](SECURITY.md).
-From a development checkout run `npm ci`, `npm run typecheck`, and `npm test`.
-Keep V2 2.3.2 compatibility, preserve native delegation, and state clearly whether
-a check was mocked or exercised in real Herdr. See [VERIFICATION.md](VERIFICATION.md)
-and [release-checks](release-checks/) for release evidence.
+```sh
+python3 "$NEW/scripts/setup.py" rollback --dry-run
+python3 "$NEW/scripts/setup.py" rollback
+```
 
-Licensed under the [MIT License](LICENSE), copyright 2026 rohithga1.
+This restores the recorded old registration and removes only our companion
+changes. Changed plugin options require manual reconciliation before rollback.
+Keep the old package directory installed. Companion updates arrive only with
+a reviewed Autopanes release; do not update this pinned snapshot independently.
+
+## Authentication and limitations
+
+- Local managed service discovery or an explicit HTTPS/loopback-HTTP origin.
+  No URL userinfo, path, query or fragment credentials; non-loopback cleartext
+  HTTP is rejected. Remote custom-header, cookie and bearer-token auth are not
+  supported. Basic auth uses private launch data; remote HTTPS Basic remains
+  unverified live. Never put credentials in a sidebar title or release report.
+- Background viewers are real OpenCode TUIs and consume resources. They attach
+  to existing native sessions without replaying prompts or replacing delegation.
+- Ownership metadata prevents accidental cross-group cleanup, not malicious
+  same-user tampering. Sidebar metadata may expose task names locally.
+- Native nested delegation and cold-process recovery of retained viewers are
+  **not verified**. Cleanup can cause transient Herdr focus changes.
+- Conflicting view overrides created by external scripts/compiled plugins cannot
+  all be discovered in advance. Use one sidebar reporter.
+- Known moderate dependency advisories remain; see [DEPENDENCIES.md](DEPENDENCIES.md).
+
+Details: [verification](VERIFICATION.md), [grouped interaction](docs/grouped-viewers.md),
+[security](SECURITY.md), [review](SECURITY_REVIEW.md), [release notes](RELEASE_NOTES.md).
+MIT for our code; the bundled companion retains its own copyright and notices.

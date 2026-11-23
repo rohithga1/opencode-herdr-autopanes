@@ -1,0 +1,206 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+from sidebar import task_label, desired_rows, changed_tokens
+
+
+class SidebarRowsTests(unittest.TestCase):
+    def test_working_agent_shows_its_chats_title_not_its_latest_message(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            # The latest message is only a pasted block; the chat's newest
+            # generated title says what the work is. The shell started in
+            # another agent's folder, so the transcript is under the agent's own.
+            (Path(tmp) / ".claude").mkdir()
+            (Path(tmp) / ".claude/history.jsonl").write_text(json.dumps(
+                {"sessionId": "session-1", "display": "[Pasted text #1 +14 lines]"}) + "\n")
+            transcript = Path(tmp) / ".claude/projects/-x-agents-oana/session-1.jsonl"
+            transcript.parent.mkdir(parents=True)
+            transcript.write_text("\n".join(json.dumps(r) for r in [
+                {"type": "ai-title", "aiTitle": "Review sidebar layouts", "sessionId": "session-1"},
+                {"type": "user", "message": {"content": "[Pasted text #1 +14 lines]"}, "sessionId": "session-1"},
+                {"type": "ai-title", "aiTitle": "Recommend a sidebar layout", "sessionId": "session-1"},
+            ]) + "\n")
+            pane = {
+                "agent": "claude",
+                "agent_status": "working",
+                "cwd": "/x/agents/minion-god",
+                "foreground_cwd": "/x/agents/oana",
+                "terminal_title_stripped": "Claude Code",
+                "agent_session": {"kind": "id", "value": "session-1"},
+            }
+            with patch("sidebar.Path.home", return_value=Path(tmp)), patch.dict("os.environ", {}, clear=True):
+                self.assertEqual(task_label(pane, {}), "Recommend a sidebar layout")
+
+    def test_task_ignores_session_path_and_vague_followup(self):
+        pane = {"agent": "codex", "terminal_title_stripped":
+                "[33] ~/Work/project | Review the launch flow | are you still on …"}
+        self.assertEqual(task_label(pane, {}), "Review the launch flow")
+
+    def test_named_session_beats_notification_markup(self):
+        pane = {"agent": "claude", "terminal_title_stripped":
+                "sidebar-layout-review | [71] ~/Work/project | <task-notification> stuff"}
+        self.assertEqual(task_label(pane, {}), "Sidebar layout review")
+
+    def test_paths_never_become_task_labels(self):
+        pane = {"agent": "agy", "terminal_title_stripped": "[3] ~/Work/project"}
+        self.assertEqual(task_label(pane, {}), "AGY session")
+
+    def test_pi_directory_title_falls_through_to_the_agent_name(self):
+        pane = {"agent": "pi", "name": "lum-1018-build",
+                "cwd": "/home/u/.herdr/worktrees/ehr/feat-session-cutover",
+                "terminal_title_stripped": "π - feat-session-cutover"}
+        self.assertEqual(task_label(pane, {"t1": "[1] agent"}), "lum-1018-build")
+
+    def test_pi_directory_title_without_a_name_uses_the_tab(self):
+        pane = {"agent": "pi", "tab_id": "t1", "cwd": "/srv/repo",
+                "terminal_title_stripped": "π - repo"}
+        self.assertEqual(task_label(pane, {"t1": "review"}), "review")
+
+    def test_windows_cwd_names_its_own_directory(self):
+        pane = {"agent": "pi", "tab_id": "t1", "cwd": "C:\\work\\demo\\",
+                "terminal_title_stripped": "π - demo"}
+        self.assertEqual(task_label(pane, {"t1": "review"}), "review")
+
+    def test_pi_title_that_is_not_the_directory_still_wins(self):
+        pane = {"agent": "pi", "name": "lum-1018-build", "cwd": "/srv/repo",
+                "terminal_title_stripped": "π - fix the parser"}
+        self.assertEqual(task_label(pane, {}), "Π - fix the parser")
+
+    def test_agent_name_beats_a_program_named_tab(self):
+        pane = {"agent": "pi", "name": "lum-1018-review", "tab_id": "t1"}
+        self.assertEqual(task_label(pane, {"t1": "agent"}), "lum-1018-review")
+
+    def test_rows_keep_live_state_and_add_one_group_gap(self):
+        panes = [
+            {"pane_id": "w1:p1", "workspace_id": "w1", "agent": "codex", "agent_status": "working"},
+            {"pane_id": "w1:p2", "workspace_id": "w1", "agent": "claude", "agent_status": "blocked"},
+            {"pane_id": "w2:p1", "workspace_id": "w2", "agent": "codex", "agent_status": "done"},
+        ]
+        rows = desired_rows(panes, [{"workspace_id": "w1", "label": "one"},
+                                    {"workspace_id": "w2", "label": "two"}], {})
+        self.assertIsNone(rows["w1:p1"]["hs_gap"])
+        self.assertIsNone(rows["w1:p2"]["hs_group"])
+        self.assertIsNotNone(rows["w1:p2"]["hs_gap"])
+        self.assertIsNone(rows["w2:p1"]["hs_gap"])
+        self.assertTrue(rows["w1:p1"]["hs_working"].startswith("◔ "))
+        self.assertTrue(rows["w1:p2"]["hs_blocked"].startswith("? "))
+        self.assertTrue(rows["w2:p1"]["hs_done"].startswith("✓ "))
+        self.assertIsNone(rows["w2:p1"]["hs_working"])
+
+    def test_unchanged_rows_do_not_publish_again(self):
+        desired = {"hs_group": "project", "hs_working": "⠿ Review", "hs_done": None}
+        existing = {"hs_group": "project", "hs_working": "⠿ Review"}
+        self.assertEqual(changed_tokens(existing, desired), {})
+
+    def test_quiet_group_dims_and_terminal_only_tab_is_visible(self):
+        panes = [
+            {"pane_id": "p1", "workspace_id": "w1", "tab_id": "t1", "agent": "codex", "agent_status": "idle"},
+            {"pane_id": "p2", "workspace_id": "w1", "tab_id": "t2"},
+        ]
+        spaces = [{"workspace_id": "w1", "label": "project"}]
+        tabs = {"t1": "main", "t2": "explorer"}
+        dim = desired_rows(panes, spaces, tabs, inactive_ids={"w1"})
+        self.assertIsNone(dim["p1"]["hs_group"])
+        self.assertEqual(dim["p1"]["hs_group_dim"], "project")
+        self.assertEqual(dim["p1"]["hs_terminals"], "terminals: explorer")
+        self.assertIsNone(dim["p1"]["hs_idle"])
+        self.assertTrue(dim["p1"]["hs_idle_dim"].startswith("○ "))
+        panes[0]["agent_status"] = "working"
+        bright = desired_rows(panes, spaces, tabs)
+        self.assertEqual(bright["p1"]["hs_group"], "project")
+        self.assertIsNone(bright["p1"]["hs_group_dim"])
+        self.assertIsNone(bright["p1"]["hs_idle_dim"])
+        panes[1]["agent"] = "claude"
+        self.assertIsNone(desired_rows(panes, spaces, tabs)["p1"]["hs_terminals"])
+
+    def test_tab_groups_use_compact_tree_guides(self):
+        panes = [
+            {"pane_id": "w1:p1", "workspace_id": "w1", "tab_id": "w1:t1", "agent": "codex"},
+            {"pane_id": "w1:p2", "workspace_id": "w1", "tab_id": "w1:t1", "agent": "claude"},
+            {"pane_id": "w1:p3", "workspace_id": "w1", "tab_id": "w1:t2", "agent": "codex"},
+        ]
+        workspaces = [{"workspace_id": "w1", "label": "project"}]
+        rows = desired_rows(panes, workspaces, {"w1:t1": "main", "w1:t2": "docs"})
+        self.assertEqual(rows["w1:p1"]["hs_tab"], "main")
+        self.assertIsNone(rows["w1:p2"]["hs_tab"])
+        self.assertEqual(rows["w1:p3"]["hs_tab"], "\u2800\u2800docs")
+        # Provider logos keep a stable leading cell in every selection state.
+        self.assertEqual(rows["w1:p1"]["hs_logo"], "├─ \u2800\ue1a1")
+        self.assertEqual(rows["w1:p2"]["hs_logo"], "\u2800\u2800└─ \u2800\ue1a0")
+        self.assertEqual(rows["w1:p3"]["hs_logo"], "└─ \u2800\ue1a1")
+
+        # A close/move clears the former heading and updates the remaining branch.
+        panes[0].pop("agent")
+        panes[2]["tab_id"] = "w1:t1"
+        rows = desired_rows(panes, workspaces, {"w1:t1": "renamed"})
+        self.assertIsNone(rows["w1:p1"]["hs_tab"])
+        self.assertEqual(rows["w1:p2"]["hs_group"], "project")
+        self.assertIsNone(rows["w1:p2"]["hs_tab"])
+        self.assertIsNone(rows["w1:p3"]["hs_tab"])
+
+    def test_idle_agent_fades_without_dimming_shared_headings_or_working_peer(self):
+        panes = [
+            {"pane_id": "w1:p1", "workspace_id": "w1", "tab_id": "w1:t1",
+             "agent": "codex", "agent_status": "idle", "focused": True},
+            {"pane_id": "w1:p2", "workspace_id": "w1", "tab_id": "w1:t1",
+             "agent": "claude", "agent_status": "working"},
+            {"pane_id": "w1:p3", "workspace_id": "w1", "tab_id": "w1:t2"},
+        ]
+        spaces = [{"workspace_id": "w1", "label": "project"}]
+        tabs = {"w1:t1": "main", "w1:t2": "shell"}
+        faded = desired_rows(panes, spaces, tabs, inactive_pane_ids={"w1:p1"})
+        self.assertEqual(faded["w1:p1"]["hs_group"], "project")
+        self.assertEqual(faded["w1:p1"]["hs_tab"], "main")
+        self.assertIsNone(faded["w1:p1"]["hs_idle"])
+        self.assertTrue(faded["w1:p1"]["hs_idle_dim"].startswith("○ "))
+        self.assertIsNone(faded["w1:p1"]["hs_logo_focus"])
+        self.assertNotIn("▌", faded["w1:p1"]["hs_logo_dim"])
+        self.assertTrue(faded["w1:p2"]["hs_working"].startswith("◔ "))
+        self.assertIsNone(faded["w1:p2"]["hs_working_dim"])
+        bright = desired_rows(panes, spaces, tabs)
+        changes = changed_tokens(faded["w1:p1"], bright["w1:p1"])
+        self.assertIsNone(changes["hs_idle_dim"])
+        self.assertIsNone(changes["hs_logo_dim"])
+        self.assertIsNotNone(changes["hs_logo"])
+        self.assertNotIn("hs_logo_focus", changes)
+
+    def test_kimchi_mark_uses_its_own_token_until_it_fades(self):
+        panes = [
+            {"pane_id": "w1:p1", "workspace_id": "w1", "tab_id": "w1:t1",
+             "agent": "kimchi", "agent_status": "working"},
+            {"pane_id": "w1:p2", "workspace_id": "w1", "tab_id": "w1:t1",
+             "agent": "claude", "agent_status": "idle"},
+        ]
+        spaces = [{"workspace_id": "w1", "label": "project"}]
+        rows = desired_rows(panes, spaces, {"w1:t1": "main"})
+        kimchi, claude = rows["w1:p1"], rows["w1:p2"]
+        self.assertTrue(kimchi["hs_logo_kimchi"].endswith("\ue1ab"))
+        self.assertIsNone(kimchi["hs_logo"])
+        self.assertTrue(kimchi["hs_working"].startswith("◔ "))
+        self.assertIsNone(claude["hs_logo_kimchi"])
+        self.assertTrue(claude["hs_logo"].endswith("\ue1a0"))
+        faded = desired_rows(panes, spaces, {"w1:t1": "main"}, inactive_pane_ids={"w1:p1"})["w1:p1"]
+        self.assertIsNone(faded["hs_logo_kimchi"])
+        self.assertTrue(faded["hs_logo_dim"].endswith("\ue1ab"))
+        self.assertEqual(set(faded), set(kimchi))
+
+    def test_single_tab_uses_compact_rows_until_a_second_tab_exists(self):
+        panes = [
+            {"pane_id": "w1:p1", "workspace_id": "w1", "tab_id": "w1:t1", "agent": "codex"},
+            {"pane_id": "w1:p2", "workspace_id": "w1", "tab_id": "w1:t1", "agent": "claude"},
+        ]
+        workspaces = [{"workspace_id": "w1", "label": "project"}]
+        tabs = {"w1:t1": "named-tab", "w1:t2": "shell"}
+        compact = desired_rows(panes, workspaces, tabs)
+        self.assertTrue(all(row["hs_tab"] is None for row in compact.values()))
+        self.assertEqual(compact["w1:p1"]["hs_logo"], "\u2800\ue1a1")
+        self.assertEqual(compact["w1:p2"]["hs_logo"], "\u2800\u2800\u2800\ue1a0")
+
+        # Count real tabs, including shell-only tabs, so tab identity stays useful.
+        panes.append({"pane_id": "w1:p3", "workspace_id": "w1", "tab_id": "w1:t2"})
+        expanded = desired_rows(panes, workspaces, tabs)
+        self.assertEqual(expanded["w1:p1"]["hs_tab"], "named-tab")
+        self.assertIsNone(expanded["w1:p3"]["hs_tab"])
+        self.assertEqual(desired_rows(panes[:-1], workspaces, tabs), compact)

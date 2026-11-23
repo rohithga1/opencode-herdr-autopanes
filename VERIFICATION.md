@@ -1,5 +1,93 @@
 # Verification history
 
+## v0.2.0 packaged-release acceptance — 2026-11-23
+
+The grouped implementation is now reproducible from a single tarball containing
+the pinned companion and unified setup. Final receipt:
+[release-checks/0.2.0.md](release-checks/0.2.0.md).
+
+Tested in a separate Herdr session with separate configuration, data/state and
+OpenCode CLI roots, using only installed release files; neither development
+checkout nor local modified companion was registered there. Real native agents
+used the existing OpenCode service with test-only sessions/location. No user
+service restart, new user workspace, npm publication or v0.1.0 replacement.
+
+Both components loaded from the final package. Two orchestrators each produced
+two concurrent child viewers in separate groups; real sidebar mouse events
+selected correct child IDs/results full-size and returned to both parents.
+Before/after geometry/focus matched. Completed viewers were retained. Four-viewer
+overflow counted retained views, left the other group unchanged and allowed
+all native work to complete. Cleanup was scoped to each owner.
+
+Fresh setup, actual v0.1.0 artifact upgrade, rollback, repeated uninstall,
+compatible-companion reuse and user-owned-companion preservation were tested.
+Later unrelated CLI/Herdr settings survived. A changed managed sidebar table
+was refused without overwriting it. A deliberately invalid test config caused
+Herdr reload rejection; after correcting that fixture, journal-based uninstall
+retry succeeded. The release files did not need a fix for that fixture error.
+
+Checks: typecheck; 26 TypeScript regressions against both reviewed source and
+final installed package; 4 unified-setup tests; grouping self-check; bundled
+companion suite (206 tests, 20 optional font/tooling skips). A test-only TS loader
+was used for Node's node_modules restriction; actual production loading was
+independently verified through OpenCode.
+
+The final package adds only documentation/capture changes to the first tested
+candidate's runtime. Final bytes were installed again and real two-owner launch/
+navigation checks repeated. Consumer audit: 25 moderate entries, same two
+advisories, no high/critical. Companion runtime remains Python stdlib-only.
+
+The sidebar image is a cropped, rasterized capture of actual test terminal
+cells, not a fabricated interface or desktop screenshot. Private prompts,
+credentials, logs, original configs and diagnostics are outside the repository.
+The isolated server was stopped after acceptance; user sessions were preserved.
+
+## Unreleased local grouped-viewer prototype — 2026-11-22
+
+The later `local/grouped-viewers` interaction changes are **not** in v0.1.0.
+The published release, its tag and both recorded artifact hashes are preserved.
+See [docs/grouped-viewers.md](docs/grouped-viewers.md) for supported features,
+the explicit companion extension, rollback and detailed live observations.
+
+Local mode now defaults to background tabs in the existing workspace. The
+companion's upstream `hs_parent` only recognizes contiguous same-tab children,
+and an installed Herdr split clears zoom. Therefore guaranteed full-size
+viewing plus parent/child grouping required a local companion extension rather
+than presenting a flat tab list as a hierarchy.
+
+Live checks covered two orchestrators in one workspace, distinct cross-tab
+child groups, correct conversations/results after actual sidebar mouse clicks,
+returning to each main agent, readable labels with hidden identity metadata,
+retained completion, no additional workspaces, and no main-tab resizing during
+background creation at fixed terminal dimensions.
+
+An early optional-close prototype relied on Herdr's global focus snapshot and
+proved unsafe with two clients. It was fixed before leaving the feature in this
+branch: focus events now permanently pin selected viewers and observation
+failure disables automatic closing. Native completion also checks ongoing
+background shells, descendants and pending forms/permissions, not just the
+last model-turn outcome. Repeated live checks confirmed working and inspected
+viewers stayed open, an unseen completed viewer closed after the configured
+8-second trial delay, and an actual pending form kept a completed-but-blocked
+viewer open. The pending test form was removed afterward.
+
+B's cleanup left all A viewers and both owners intact. A's cleanup removed
+its own remaining viewers, leaving the owners. Final demonstration children were
+then created under both owners with default retention restored, for user review.
+No test agent was left waiting on a FIFO or pending form.
+
+Current checks: typecheck and **26 TypeScript regression tests**, the original
+adapter's grouping self-check, and **206 companion tests with 20 skips** passed.
+The companion's registry was updated to describe the local extension; an initial
+documentation-drift failure was corrected. Raw diagnostic client captures and
+local backup contents remain private outside the repository.
+
+The native release limitations below remain historical evidence for v0.1.0.
+This iteration still does not claim native nested delegation or arbitrary
+cross-process atomicity between a last-millisecond click/work admission and
+a close already dispatched to Herdr. Automatic closing remains opt-in and
+is disabled in the user's normal local configuration.
+
 Tested environment: Ubuntu 26.04.1 LTS, OpenCode 2.3.2, Herdr 0.9.5,
 Node 26.13.1 and npm 12.2.3. This is maintainer-assisted testing, not independent
 certification. Private terminal captures and detailed local diagnostics are

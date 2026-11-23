@@ -17,9 +17,11 @@ export class Herdr {
   private direction = 0
   private readonly report: (message: string) => void
   private readonly pending: Map<string, number>
-  constructor(report: (message: string) => void, pending = new Map<string, number>()) {
+  private readonly mode: "tabs" | "split"
+  constructor(report: (message: string) => void, pending = new Map<string, number>(), mode: "tabs" | "split" = "tabs") {
     this.report = report
     this.pending = pending
+    this.mode = mode
   }
 
   private async call(args: string[]) {
@@ -43,6 +45,24 @@ export class Herdr {
   }
 
   async close(id: string) { await this.call(["pane", "close", id]) }
+
+  async describeOwner(title: string) {
+    await this.call(["pane", "report-metadata", this.env.HERDR_PANE_ID!, "--source", "opencode-herdr-autopanes",
+      "--token", `hs_title=${title}`])
+  }
+
+  async status(prefix: string, sessionID: string, status: string | (() => Promise<string>)) {
+    const pane = (await this.list()).find((p) => p.tokens?.ocap_owner === prefix &&
+      p.tokens.ocap_session === sessionID)
+    if (!pane) return
+    const value = typeof status === "string" ? status : await status()
+    if (pane.tokens?.ocap_status === value) return
+    await this.call(["pane", "report-metadata", pane.pane_id, "--source", "opencode-herdr-autopanes",
+      "--token", `ocap_status=${value}`])
+    // Optional display integration; absence must never affect native agents.
+    try { await this.call(["plugin", "action", "invoke", "refresh", "--plugin", "testy-cool.herdr-sidebar"]) }
+    catch { /* Stock Herdr can still display the flat background terminals. */ }
+  }
 
   async launch(session: Session, label: string, endpoint: Endpoint) {
     validateEndpoint(endpoint)
@@ -69,13 +89,22 @@ export class Herdr {
         sessionID: session.id,
         status,
       }), { mode: 0o600, flag: "wx" })
-      // ponytail: alternating splits; inspect pane geometry if small terminals need adaptive tiling.
-      const result = await this.call(["pane", "split", "--pane", this.env.HERDR_PANE_ID!,
-        "--direction", this.direction++ % 2 ? "down" : "right", "--cwd", session.location.directory,
-        "--env", "OPENCODE_HERDR_VIEWER=1", "--no-focus"])
-      pane = result?.pane?.pane_id
-      if (!pane) throw new Error("Unexpected Herdr split response")
-      await this.call(["pane", "rename", pane, label])
+      const title = label.slice(label.indexOf(session.id) + session.id.length).trim() || "subagent"
+      const prefix = label.slice(0, label.indexOf(session.id))
+      const result = await this.call(this.mode === "tabs"
+        ? ["tab", "create", "--workspace", this.env.HERDR_WORKSPACE_ID!, "--label", title,
+            "--cwd", session.location.directory, "--env", "OPENCODE_HERDR_VIEWER=1", "--no-focus"]
+        // ponytail: split mode retains the old alternating layout, not adaptive tiling.
+        : ["pane", "split", "--pane", this.env.HERDR_PANE_ID!,
+            "--direction", this.direction++ % 2 ? "down" : "right", "--cwd", session.location.directory,
+            "--env", "OPENCODE_HERDR_VIEWER=1", "--no-focus"])
+      pane = result?.root_pane?.pane_id ?? result?.pane?.pane_id
+      if (!pane) throw new Error("Unexpected Herdr viewer creation response")
+      await this.call(["pane", "rename", pane, title])
+      await this.call(["pane", "report-metadata", pane, "--source", "opencode-herdr-autopanes",
+        "--token", `ocap_owner=${prefix}`, "--token", `ocap_session=${session.id}`,
+        "--token", `ocap_parent=${this.env.HERDR_PANE_ID}`, "--token", `hs_parent=${this.env.HERDR_PANE_ID}`,
+        "--token", "ocap_status=working", "--token", `hs_title=${title}`])
       // pane run accepts shell text, not argv. Quote every token for POSIX shells.
       await this.call(["pane", "run", pane, ["node", viewerPath, config].map(quote).join(" ")])
     } catch (error) {

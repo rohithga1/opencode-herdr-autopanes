@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import { execFileSync } from "node:child_process"
-import { Manager, enabled, newState, type Pane, type Session } from "../src/manager.ts"
+import { Manager, enabled, newState, owns, type Pane, type Session } from "../src/manager.ts"
 import { quote } from "../src/herdr.ts"
 
 function harness(max = 4) {
@@ -88,6 +88,75 @@ test("targeted recovery reopens only the requested closed viewer", async () => {
   assert.equal(h.panes().filter((p) => p.pane_id === "pane-b").length, 1)
 })
 
+test("metadata ownership survives readable labels; cleanup isolates terminal groups", async () => {
+  const h = harness()
+  h.panes().push(
+    { pane_id: "owned", label: "Read license", tokens: { ocap_owner: h.io.prefix, ocap_session: "a" } },
+    { pane_id: "other", label: "Read license", tokens: { ocap_owner: "ocap:other:", ocap_session: "a" } },
+  )
+  assert.equal(owns(h.panes()[0]!, h.io.prefix), true)
+  await h.manager.consider("a")
+  assert.deepEqual(h.launches, [])
+  await h.manager.cleanup()
+  assert.deepEqual(h.panes().map((p) => p.pane_id), ["other"])
+})
+
+test("auto-close delay resets while inspected; active/blocked/unknown or unsafe sessions never close", async () => {
+  const h = harness()
+  const p: Pane = { pane_id: "viewer", label: "Task", agent_status: "done",
+    tokens: { ocap_owner: h.io.prefix, ocap_session: "a" } }
+  h.panes().push(p)
+  let safe = true
+  const manager = new Manager(h.state, { ...h.io, safeToClose: async () => safe })
+  await manager.sweep(1000, 0)
+  await manager.sweep(1000, 500)
+  assert.equal(h.panes().length, 1)
+  p.focused = true
+  await manager.sweep(1000, 2000)
+  p.focused = false
+  await manager.sweep(1000, 3000)
+  assert.equal(h.panes().length, 1)
+  safe = false
+  await manager.sweep(1000, 5000)
+  safe = true
+  for (const status of ["working", "blocked", "unknown"]) {
+    p.agent_status = status
+    await manager.sweep(0, 6000)
+    assert.equal(h.panes().length, 1)
+  }
+  p.agent_status = "done"
+  await manager.sweep(1000, 7000)
+  await manager.sweep(1000, 8000)
+  assert.equal(h.panes().length, 0)
+})
+
+test("auto-close rechecks focus and native safety immediately before closing", async () => {
+  const h = harness()
+  const pane: Pane = { pane_id: "viewer", agent_status: "done",
+    tokens: { ocap_owner: h.io.prefix, ocap_session: "a" } }
+  h.panes().push(pane)
+  let reads = 0
+  const manager = new Manager(h.state, { ...h.io, list: async () => {
+    if (++reads === 2) pane.focused = true
+    return h.panes()
+  }, safeToClose: async () => true })
+  await manager.sweep(0)
+  assert.equal(h.panes().length, 1)
+})
+
+test("unloading during the final completion check leaves the viewer intact", async () => {
+  const h = harness()
+  h.panes().push({ pane_id: "viewer", agent_status: "done",
+    tokens: { ocap_owner: h.io.prefix, ocap_session: "a" } })
+  let checks = 0
+  const manager = new Manager(h.state, { ...h.io, safeToClose: async () => {
+    if (++checks === 2) manager.dispose()
+    return true
+  } })
+  await manager.sweep(0)
+  assert.equal(checks, 2)
+  assert.equal(h.panes().length, 1)
+})
 test("mismatched server session identity is refused", async () => {
   const h = harness()
   h.sessions.set("a", { id: "b", parentID: "root", location: { directory: "/project" } })
