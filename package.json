@@ -12,7 +12,7 @@
     ".": "./src/index.ts",
     "./tui": "./src/tui.ts"
   },
-  "files": ["src", "scripts/install.mjs", "scripts/setup.py", "companion", "docs/grouped-viewers.md", "docs/grouped-sidebar.png", "README.md", "RELEASE_NOTES.md", "SECURITY.md", "SECURITY_REVIEW.md", "DEPENDENCIES.md", "LICENSE"],
+  "files": ["src", "scripts/install.mjs", "scripts/setup.py", "companion", "docs/grouped-viewers.md", "docs/workspaces.md", "docs/demo-script.md", "docs/grouped-sidebar.png", "README.md", "RELEASE_NOTES.md", "SECURITY.md", "SECURITY_REVIEW.md", "DEPENDENCIES.md", "LICENSE"],
   "engines": { "node": ">=22.18.0" },
   "scripts": {
     "test": "node --test test/*.test.ts",

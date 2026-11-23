@@ -5,7 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { FocusGuard } from "../src/focus.ts"
 
-test("focus guard pins any selected pane and fails closed on unavailable observation", async () => {
+test("focus guard protects current inspection, separates explicit pins, and fails closed on unavailable observation", async () => {
   const dir = await mkdtemp("/tmp/opencode/focus-test-")
   const path = join(dir, "socket")
   let peer: Socket | undefined
@@ -24,19 +24,21 @@ test("focus guard pins any selected pane and fails closed on unavailable observa
     assert.ok(check())
   }
   try {
-    assert.equal(guard.canClose("pane"), false)
-    await settle(() => guard.canClose("pane"))
-    guard.protect("preexisting")
-    assert.equal(guard.canClose("preexisting"), false)
+    assert.equal(guard.canClose("pane"), "inspection unavailable")
+    await settle(() => guard.canClose("pane") === true)
+    guard.pin("preexisting")
+    assert.equal(guard.canClose("preexisting"), "explicitly pinned")
     peer!.write('{"event":"pane_focused","data":{"pane_id":"pane"}}\n')
-    await settle(() => !guard.canClose("pane"))
-    // Another client focuses a different pane: the inspected one stays pinned.
+    await settle(() => guard.canClose("pane") === "currently inspected")
+    // Returning focus to another pane releases automatic inspection protection.
     peer!.write('{"event":"pane_focused","data":{"pane_id":"other"}}\n')
-    await settle(() => !guard.canClose("other"))
-    assert.equal(guard.canClose("pane"), false)
+    await settle(() => guard.canClose("other") === "currently inspected")
+    assert.equal(guard.canClose("pane"), true)
+    guard.unpin("preexisting")
+    assert.equal(guard.canClose("preexisting"), true)
     peer!.destroy()
     await settle(() => reports.length > 0)
-    assert.equal(guard.canClose("never-inspected"), false)
+    assert.equal(guard.canClose("never-inspected"), "inspection unavailable")
   } finally {
     guard.dispose()
     peer?.destroy()

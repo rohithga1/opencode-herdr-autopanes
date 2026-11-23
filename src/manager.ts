@@ -8,6 +8,20 @@ export type Pane = {
   pane_id: string; label?: string | null; focused?: boolean; agent_status?: string
   tokens?: Record<string, string>
 }
+export type CloseSkipReason =
+  | "currently inspected"
+  | "explicitly pinned"
+  | "inspection unavailable"
+  | "ownership or session identity uncertain"
+  | "native work still running or blocked"
+  | "completion state uncertain"
+  | "viewer changed or ownership became uncertain"
+  | "state/API could not be verified"
+export type CloseSummary = {
+  closed: number
+  skipped: Record<string, number>
+  failed: number
+}
 export const owns = (pane: Pane, prefix: string) =>
   pane.tokens?.ocap_owner === prefix || pane.label?.startsWith(prefix) === true
 export const paneSession = (pane: Pane, prefix: string) =>
@@ -40,7 +54,7 @@ export class Manager {
     close(id: string): Promise<void>
     report(message: string): void
     safeToClose?(id: string): Promise<boolean>
-    canClosePane?(pane: Pane): boolean
+    canClosePane?(pane: Pane): true | CloseSkipReason
   }
   constructor(state: State, io: Manager["io"]) {
     this.state = state
@@ -84,7 +98,7 @@ export class Manager {
         return
       }
       if (panes.length >= this.io.max) {
-        this.io.report(`Herdr autopanes: pane limit ${this.io.max}; no viewer for ${id}. Agent continues normally. Retained panes count; close one, then /herdr-autopanes-retry.`)
+        this.io.report(`Herdr autopanes: pane limit ${this.io.max}; no viewer for ${id}. Agent continues normally. Retained panes count; use /herdr-autopanes-close-completed, then /herdr-autopanes-retry.`)
         return
       }
       const title = (session.title ?? "subagent").replace(/[\x00-\x1f\x7f-\x9f]/g, " ").slice(0, 60)
@@ -100,34 +114,114 @@ export class Manager {
         try { await this.io.close(pane.pane_id) }
         catch (error) { this.io.report(`Could not close ${pane.pane_id}: ${String(error)}`) }
       }
-      this.io.report("Plugin-owned viewers closed. Child sessions keep running on the OpenCode server.")
+      this.io.report("Viewer tabs closed. Conversations preserved; any active work continues.")
     })
   }
 
-  sweep(delayMs: number, now = Date.now()) {
-    return this.enqueue(async () => {
-      if (this.disposed || !this.io.safeToClose) return
-      for (const pane of await this.io.list()) {
-        if (!owns(pane, this.io.prefix)) continue
-        const id = paneSession(pane, this.io.prefix)
-        if (!id || pane.focused || this.io.canClosePane?.(pane) === false ||
-            !["idle", "done"].includes(pane.tokens?.ocap_status ?? pane.agent_status ?? "") ||
-            !await this.io.safeToClose(id)) {
-          this.state.completed.delete(pane.pane_id)
-          continue
-        }
-        const since = this.state.completed.get(pane.pane_id) ?? now
-        this.state.completed.set(pane.pane_id, since)
-        if (now - since < delayMs) continue
-        const current = (await this.io.list()).find((p) => p.pane_id === pane.pane_id)
-        if (!current || !owns(current, this.io.prefix) || current.focused ||
-            !["idle", "done"].includes(current.tokens?.ocap_status ?? current.agent_status ?? "") ||
-            !await this.io.safeToClose(id) || this.io.canClosePane?.(current) === false) continue
-        if (this.disposed) return
-        await this.io.close(pane.pane_id)
+  private async closeEligible(delayMs: number, now: number, summary?: CloseSummary) {
+    if (this.disposed || !this.io.safeToClose) return
+    const skip = (reason: CloseSkipReason) => {
+      if (summary) summary.skipped[reason] = (summary.skipped[reason] ?? 0) + 1
+    }
+    const safe = async (id: string): Promise<boolean | undefined> => {
+      try { return await this.io.safeToClose!(id) }
+      catch { return undefined }
+    }
+    for (const pane of await this.io.list()) {
+      if (!owns(pane, this.io.prefix)) continue
+      const id = paneSession(pane, this.io.prefix)
+      if (!id) {
+        skip("ownership or session identity uncertain")
         this.state.completed.delete(pane.pane_id)
+        continue
       }
-    })
+      if (pane.focused) {
+        skip("currently inspected")
+        this.state.completed.delete(pane.pane_id)
+        continue
+      }
+      const block = this.io.canClosePane?.(pane)
+      if (block !== undefined && block !== true) {
+        skip(block)
+        this.state.completed.delete(pane.pane_id)
+        continue
+      }
+      const status = pane.tokens?.ocap_status ?? pane.agent_status ?? ""
+      if (!["idle", "done"].includes(status)) {
+        skip(status === "working" ? "native work still running or blocked" : "completion state uncertain")
+        this.state.completed.delete(pane.pane_id)
+        continue
+      }
+      const safeState = await safe(id)
+      if (safeState === undefined) {
+        skip("state/API could not be verified")
+        this.state.completed.delete(pane.pane_id)
+        continue
+      }
+      if (!safeState) {
+        skip("native work still running or blocked")
+        this.state.completed.delete(pane.pane_id)
+        continue
+      }
+      const since = this.state.completed.get(pane.pane_id) ?? now
+      this.state.completed.set(pane.pane_id, since)
+      if (now - since < delayMs) continue
+      const current = (await this.io.list()).find((p) => p.pane_id === pane.pane_id)
+      if (!current || !owns(current, this.io.prefix)) {
+        skip("viewer changed or ownership became uncertain")
+        continue
+      }
+      if (current.focused) {
+        skip("currently inspected")
+        continue
+      }
+      const currentBlock = this.io.canClosePane?.(current)
+      if (currentBlock !== undefined && currentBlock !== true) {
+        skip(currentBlock)
+        continue
+      }
+      const currentStatus = current.tokens?.ocap_status ?? current.agent_status ?? ""
+      const currentSafe = await safe(id)
+      if (!["idle", "done"].includes(currentStatus)) {
+        skip(currentStatus === "working" ? "native work still running or blocked" : "completion state uncertain")
+        continue
+      }
+      if (currentSafe === undefined) {
+        skip("state/API could not be verified")
+        continue
+      }
+      if (!currentSafe) {
+        skip("native work still running or blocked")
+        continue
+      }
+      if (this.disposed) return
+      try {
+        await this.io.close(pane.pane_id)
+        if (summary) summary.closed++
+      } catch (error) {
+        if (summary) summary.failed++
+        this.io.report(`Could not close ${pane.pane_id}: ${String(error)}`)
+        continue
+      }
+      this.state.completed.delete(pane.pane_id)
+    }
+  }
+
+  sweep(delayMs: number, now = Date.now()) {
+    return this.enqueue(() => this.closeEligible(delayMs, now))
+  }
+
+  closeCompleted() {
+    const summary: CloseSummary = { closed: 0, skipped: {}, failed: 0 }
+    return this.enqueue(async () => {
+      try {
+        await this.closeEligible(0, Date.now(), summary)
+      } catch (error) {
+        summary.skipped["state/API could not be verified"] =
+          (summary.skipped["state/API could not be verified"] ?? 0) + 1
+        this.io.report(`Herdr autopanes: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }).then(() => summary)
   }
 
   retry(ids: string[]) {
@@ -137,4 +231,13 @@ export class Manager {
   }
 
   dispose() { this.disposed = true }
+}
+
+export function closeSummaryMessage(summary: CloseSummary) {
+  const entries = Object.entries(summary.skipped)
+  const skipped = entries.reduce((total, [, count]) => total + count, 0)
+  const reasons = entries.length ? entries.map(([reason, count]) => `${reason}: ${count}`).join(", ") : "none"
+  return `Closed ${summary.closed} completed viewer tab${summary.closed === 1 ? "" : "s"}; ` +
+    `skipped ${skipped} (${reasons}); closure failures: ${summary.failed}. ` +
+    "Conversations preserved; any active work continues."
 }

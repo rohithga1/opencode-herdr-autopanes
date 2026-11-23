@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 import { Plugin } from "@opencode/plugin/tui"
-import { Manager, enabled, newState } from "./manager.ts"
+import { Manager, closeSummaryMessage, enabled, newState } from "./manager.ts"
 import { Herdr } from "./herdr.ts"
 import { connection } from "./connection.ts"
 import { activity } from "./activity.ts"
@@ -52,11 +52,6 @@ export default Plugin.define({
     const herdr = new Herdr(report, state.pending, mode)
     const focus = ctx.options.closeOnCompletion === true
       ? new FocusGuard(process.env.HERDR_SOCKET_PATH!, report) : undefined
-    let focusInitialized = !focus
-    if (focus) void herdr.list().then((panes) => {
-      for (const pane of panes) focus.protect(pane.pane_id)
-      focusInitialized = true
-    }).catch(() => {})
     let named = false
     const nameOwner = () => {
       if (named || !state.owner) return
@@ -77,7 +72,9 @@ export default Plugin.define({
       safeToClose: async (sessionID) => {
         return await activity(ctx.client, sessionID) === "done"
       },
-      canClosePane: (pane) => focusInitialized && (focus?.canClose(pane.pane_id) ?? false),
+      canClosePane: (pane) => pane.tokens?.ocap_pin === "1"
+        ? "explicitly pinned"
+        : focus ? focus.canClose(pane.pane_id) : true,
     })
     const stops = [
       ctx.data.on("session.created", (event) => {
@@ -115,6 +112,18 @@ export default Plugin.define({
           palette: true, slash: { name: "herdr-autopanes-cleanup" },
           run: async () => {
             if (await ctx.ui.dialog.confirm({ title: "Close Herdr viewers?", message: "Only this terminal's plugin-owned panes close. Underlying child sessions keep running." })) await manager.cleanup()
+          },
+        },
+        {
+          id: "herdr-autopanes.close-completed",
+          title: "Close completed Herdr viewers (conversations preserved)",
+          palette: true, slash: { name: "herdr-autopanes-close-completed" },
+          run: async () => {
+            const summary = await manager.closeCompleted()
+            ctx.ui.toast.show({
+              title: "Herdr autopanes",
+              message: closeSummaryMessage(summary),
+            })
           },
         },
         {

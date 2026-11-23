@@ -1,5 +1,59 @@
 # Verification history
 
+## Local close-completed/documentation update — 2026-11-23
+
+This focused patch is intentionally **unreleased and local**. It does not alter
+v0.1.0/v0.2.0 tags, release assets or checksums.
+
+The new palette/slash action `/herdr-autopanes-close-completed` reuses the
+existing activity, ownership, focus/pin and final recheck gates. It closes only
+finished viewers for the current owner. Running/blocked/unknown/failed viewers,
+active descendants or background shells, pending forms/permissions, pinned
+viewers, currently focused viewers and unverifiable ownership remain open.
+Conversations and native sessions are preserved. Full-group cleanup remains
+separate and broader.
+
+The README was rewritten for first-time users, with the existing real grouped
+sidebar capture near the top. `docs/workspaces.md` explains Herdr reconnect,
+spaces, tabs, directories and workspace creation. `docs/demo-script.md` is the
+short recording fallback; no video was staged.
+
+Checks and live validation for this patch:
+
+- 28 TypeScript tests passed, including scoped mixed-state close coverage:
+  completed owned viewer closes; running viewer, focused viewer, pinned viewer
+  and another owner's viewer remain.
+- 4 unified setup tests, the grouping self-check, and 206 companion tests
+  (20 optional skips) passed.
+- README/workspace/demo links were checked locally; npm pack dry-run includes
+  the workspace guide, recording script and grouped-sidebar image.
+- In an isolated Herdr session/config root using the local patch, two
+  orchestrators produced separate groups with two completed children each.
+  A third child held on a FIFO remained `working` while completed viewers were
+  present. The isolated viewers were then closed manually and the FIFO was
+  released; the isolated server was stopped.
+- An initial diagnostic attempt could not reliably submit a parent command to a
+  non-focused OpenCode client; that limitation was not treated as a passing
+  UI result. The final manual UI run did submit the real slash command from the
+  parent and displayed **2 closed / 0 skipped / 0 failures**. The packaged
+  v0.2.0 and user sessions were not changed.
+- The confirmed original live cause was twofold: with automatic closing off,
+  the TUI supplied `false` for every manual-close gate; with automatic closing
+  on, the focus guard stored every focus event in one permanent `pinned` set.
+  The fix makes the no-auto-close gate permissive, tracks current focus
+  separately from explicit pins, and returns a counted reason summary.
+
+Live rerun after the fix used a fresh Herdr session/config root and the local
+checkout. Two parents each launched two harmless children. Both A children were
+inspected in turn, focus returned to A, and the real
+`/herdr-autopanes-close-completed` slash command removed both A viewer panes and
+sidebar rows; B's unrelated group remained. In B, a completed eligible viewer
+was removed while a viewer carrying explicit `ocap_pin=1` and a FIFO-backed
+`working` viewer remained. The running FIFO was released and all isolated test
+panes/server were stopped afterward. The focused-viewer gate and reasoned
+summary are covered by regression tests; a separate client-focused viewer
+cannot reliably receive a parent slash command through the diagnostic PTY.
+
 ## v0.2.0 packaged-release acceptance — 2026-11-23
 
 The grouped implementation is now reproducible from a single tarball containing
