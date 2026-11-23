@@ -26,10 +26,9 @@ rasterized for readability. The names are harmless demonstration sessions.
 
 ## Status
 
-The published release is experimental **v0.2.0**. This working tree also
-contains an **unreleased local usability update** adding
-`/herdr-autopanes-close-completed`, workspace guidance, and documentation
-changes. That action is not in the published v0.2.0 tarball.
+The published release is experimental **v0.2.1**. It includes
+`/herdr-autopanes-close-completed`, accurate close results, workspace guidance,
+and the documentation/media in this repository.
 
 Grouping uses the bundled Herdr Sidebar companion extension, not stock
 `hs_parent`: stock grouping is same-tab only. The bundled companion is pinned
@@ -57,13 +56,13 @@ Run these commands in a shell **inside the Herdr session you want to use**.
 Do not run setup from an OpenCode prompt.
 
 ```sh
-mkdir -p "$HOME/.local/share/opencode-herdr-autopanes/0.2.0"
-cd "$HOME/.local/share/opencode-herdr-autopanes/0.2.0"
-BASE=https://github.com/rohithga1/opencode-herdr-autopanes/releases/download/v0.2.0
-curl -fLO "$BASE/opencode-herdr-autopanes-0.2.0.tgz"
+mkdir -p "$HOME/.local/share/opencode-herdr-autopanes/0.2.1"
+cd "$HOME/.local/share/opencode-herdr-autopanes/0.2.1"
+BASE=https://github.com/rohithga1/opencode-herdr-autopanes/releases/download/v0.2.1
+curl -fLO "$BASE/opencode-herdr-autopanes-0.2.1.tgz"
 curl -fLO "$BASE/SHA256SUMS"
 sha256sum -c SHA256SUMS
-npm install --prefix "$PWD" --ignore-scripts --save-exact ./opencode-herdr-autopanes-0.2.0.tgz
+npm install --prefix "$PWD" --ignore-scripts --save-exact ./opencode-herdr-autopanes-0.2.1.tgz
 NEW="$PWD/node_modules/opencode-herdr-autopanes"
 python3 "$NEW/scripts/setup.py" install --dry-run
 python3 "$NEW/scripts/setup.py" install
@@ -74,7 +73,8 @@ This installs dependencies locally and registers both components. It does not
 publish to npm. OpenCode and Herdr reload their settings without a service
 restart. Keep the versioned directory while it is registered.
 
-For a v0.1.0 upgrade, keep the old package and pass its exact absolute path:
+For a v0.1.0 or v0.2.0 upgrade, keep the old package and pass its exact
+absolute path:
 
 ```sh
 OLD="/absolute/path/to/old/node_modules/opencode-herdr-autopanes"
@@ -105,7 +105,7 @@ return. A second orchestrator in the same workspace gets its own group.
 Click a child row in Herdr’s left sidebar to inspect it. Click its parent row
 to return to the orchestrator. Grouping is visual and not collapsible.
 
-### Close completed viewers — unreleased local update
+### Close completed viewers
 
 In this checkout, the new palette/slash command is:
 
@@ -125,8 +125,7 @@ returning to its parent does **not** permanently exclude that child from this
 explicit action. Explicit pins are separate from automatic focus protection and
 remain protected. Automatic closing stays conservative and disabled by default.
 
-The command is **not in the published v0.2.0 artifact**. Test it only after
-loading this working tree or a future package containing this patch.
+The command is included in v0.2.1.
 
 ### Cleanup everything owned here
 
@@ -147,7 +146,7 @@ work continues.”**
 ```
 
 When the viewer limit is reached, retained viewers count. The warning suggests
-`/herdr-autopanes-close-completed` in this local update, followed by retrying
+`/herdr-autopanes-close-completed`, followed by retrying
 the skipped child. Native work continues even when no viewer is opened.
 
 ## Defaults and configuration
@@ -192,7 +191,7 @@ reconnection, project directories, and safe workspace creation.
 Advanced architecture and release evidence live in
 [docs/grouped-viewers.md](docs/grouped-viewers.md),
 [SECURITY_REVIEW.md](SECURITY_REVIEW.md), and
-[release-checks/0.2.0.md](release-checks/0.2.0.md).
+[v0.2.1 release receipt](https://github.com/rohithga1/opencode-herdr-autopanes/blob/v0.2.1/release-checks/0.2.1.md).
 
 ## Uninstall
 

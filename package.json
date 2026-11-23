@@ -1,19 +1,41 @@
 {
   "name": "opencode-herdr-autopanes",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Watch OpenCode subagents in a grouped Herdr sidebar without splitting your main terminal.",
   "license": "MIT",
   "author": "rohithga1",
-  "repository": { "type": "git", "url": "git+https://github.com/rohithga1/opencode-herdr-autopanes.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rohithga1/opencode-herdr-autopanes.git"
+  },
   "homepage": "https://github.com/rohithga1/opencode-herdr-autopanes#readme",
-  "bugs": { "url": "https://github.com/rohithga1/opencode-herdr-autopanes/issues" },
+  "bugs": {
+    "url": "https://github.com/rohithga1/opencode-herdr-autopanes/issues"
+  },
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./tui": "./src/tui.ts"
   },
-  "files": ["src", "scripts/install.mjs", "scripts/setup.py", "companion", "docs/grouped-viewers.md", "docs/workspaces.md", "docs/demo-script.md", "docs/grouped-sidebar.png", "README.md", "RELEASE_NOTES.md", "SECURITY.md", "SECURITY_REVIEW.md", "DEPENDENCIES.md", "LICENSE"],
-  "engines": { "node": ">=22.18.0" },
+  "files": [
+    "src",
+    "scripts/install.mjs",
+    "scripts/setup.py",
+    "companion",
+    "docs/grouped-viewers.md",
+    "docs/workspaces.md",
+    "docs/demo-script.md",
+    "docs/grouped-sidebar.png",
+    "README.md",
+    "RELEASE_NOTES.md",
+    "SECURITY.md",
+    "SECURITY_REVIEW.md",
+    "DEPENDENCIES.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "scripts": {
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit",

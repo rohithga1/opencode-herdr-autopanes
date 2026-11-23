@@ -20,7 +20,7 @@ class SetupTest(unittest.TestCase):
             cli = root / "opencode/cli.json"
             old = root / "old package ' quoted"
             old.mkdir()
-            (old / "package.json").write_text(json.dumps({"name": "opencode-herdr-autopanes", "version": "0.1.0"}))
+            (old / "package.json").write_text(json.dumps({"name": "opencode-herdr-autopanes", "version": "0.2.0"}))
             original = {"theme": "custom", "plugins": ["unrelated", {"package": str(old), "options": {"maxPanes": 2}}]}
             setup.write(cli, json.dumps(original).encode())
             def herdr(binary, *args):

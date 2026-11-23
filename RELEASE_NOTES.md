@@ -1,64 +1,45 @@
-# v0.2.0 — Grouped subagent views without terminal splits
+# v0.2.1 — Reliable completed-viewer cleanup
 
 **Experimental GitHub prerelease; not published to npm.**
 
-Watch native OpenCode subagents from a grouped Herdr sidebar. Each child has a
-readable name/status and a full-size background tab in the existing workspace.
-Click its row to inspect, then the parent to return. Launches leave the main
-tab's layout and focus intact. Completed views remain accessible by default.
+v0.2.1 keeps the v0.2.0 grouped full-size viewer experience and fixes manual
+completed-viewer cleanup.
 
-Defaults: tabs, four viewers per owning orchestrator (retained results count),
-automatic closing off. Split mode remains optional. Overflow skips viewers,
-not native execution. Cleanup is scoped to its owning terminal.
+## What changed
 
-## One package, both components
+- Adds `/herdr-autopanes-close-completed` as a slash command and palette action.
+- Reports the number of viewer tabs closed, skipped with reasons, and closure
+  failures. It never claims success when no tab closed.
+- Closes only finished viewers owned by the current parent group.
+- Preserves running, blocked, explicitly pinned, currently focused, uncertain,
+  and unrelated viewers. Native OpenCode conversations and sessions are never
+  cancelled or deleted.
+- Separates transient current-focus protection from explicit `ocap_pin=1`
+  protection. Viewing a completed child and returning to its parent does not
+  permanently exclude it from an explicit close action.
+- Keeps automatic closing disabled by default and conservative when enabled.
+- Improves the first-time README, adds a Herdr workspace guide, and includes a
+  short real-recording script alongside the existing grouped-sidebar capture.
+- Makes the setup journal and upgrade paths version-aware, including upgrades
+  from v0.1.0 and v0.2.0.
 
-The `.tgz` bundles Autopanes 0.2.0 and Herdr Sidebar 0.3.0 at upstream commit
-`8a45adc5c0dd02f5cffeae5e900738035c9b3b82`, with cross-tab extension 0.2.0.
-Upstream `hs_parent` alone cannot group across tabs. Exact sources, licenses,
-notices and local-change attribution are included. Text mode requires no font.
-Python 3.11+ is required alongside Node/npm, OpenCode 2.3.2 and Herdr 0.9.5.
+The broader `/herdr-autopanes-cleanup` action remains separate. Its notification
+is: **“Viewer tabs closed. Conversations preserved; any active work continues.”**
 
-Download the tarball and SHA256SUMS; verify them, install with npm into a stable
-versioned prefix, then run the packaged `scripts/setup.py install` and `doctor`
-inside the target Herdr terminal. Full copy-paste commands are in README.md.
-No service restart is needed. No unpinned companion branch is fetched.
+## Defaults and compatibility
 
-## Upgrade and rollback
+Defaults remain background tabs, four viewers per orchestrator including
+retained viewers, retention enabled, and automatic closing off. Split mode
+remains available. Cross-tab grouping still requires the bundled Herdr Sidebar
+0.3.0 companion snapshot at
+`8a45adc5c0dd02f5cffeae5e900738035c9b3b82`; stock `hs_parent` is same-tab only.
+Text labels require no font installation.
 
-Keep the v0.1.0 directory. Install 0.2.0 in a separate prefix, then:
+Tested versions remain Ubuntu 26.04.1 LTS, OpenCode 2.3.2, Herdr 0.9.5,
+Node 26.13.1, npm 12.2.3 and Python 3.14.4 (runtime minimum Python 3.11+).
+Two moderate dependency advisories remain; see DEPENDENCIES.md. Native nested
+delegation, cold recovery and remote HTTPS Basic authentication remain
+unverified. Herdr/OpenCode close-vs-click races are not atomic.
 
-```sh
-NEW="$HOME/.local/share/opencode-herdr-autopanes/0.2.0/node_modules/opencode-herdr-autopanes"
-python3 "$NEW/scripts/setup.py" install --upgrade-from "/absolute/path/to/old/package" --dry-run
-python3 "$NEW/scripts/setup.py" install --upgrade-from "/absolute/path/to/old/package"
-python3 "$NEW/scripts/setup.py" doctor
-```
-
-This replaces the old registration and selects the new defaults. Existing
-viewers are not moved or closed. `setup.py rollback` restores the recorded old
-registration; `uninstall` removes owned registrations without restoring it.
-Unrelated settings, later edits and private backups are preserved. Edits to
-managed sidebar tables stop removal until reconciled.
-
-Existing stock/customized companions are not overwritten: remove their managed
-configuration with their own installer, retain the checkout/backups, then unlink
-their registration before installing this bundle. Byte-verified compatible
-companions can be reused and remain user-owned.
-
-## Safety and limitations
-
-- Auto-close is opt-in; selecting a viewer permanently pins it. Active native
-  work, background shells, pending forms/permissions and unknown/failed states
-  retain it. No atomic cross-process close/inspection guarantee exists.
-- Visual grouping is not collapsible. Viewers are real resource-consuming TUIs.
-- Native nested delegation, cold recovery and explicit remote HTTPS Basic auth
-  remain unverified live. Auth permits HTTPS or loopback HTTP origins only.
-- Same-user metadata is bookkeeping, not authentication. One sidebar override
-  reporter should be active. Cleanup may briefly shift Herdr focus.
-- Two moderate dependency advisories remain; see DEPENDENCIES.md for exact
-  findings/exposure. No forced dependency upgrades were applied.
-
-The release receipt in `release-checks/0.2.0.md` records final artifact checksums,
-isolated package-only acceptance, configuration preservation and test boundaries.
-v0.1.0 and its tested assets are preserved.
+See README.md and `release-checks/0.2.1.md` for installation, upgrade,
+verification and rollback details. v0.1.0 and v0.2.0 remain preserved.
